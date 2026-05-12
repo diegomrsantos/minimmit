@@ -1,0 +1,8 @@
+[package]
+name = "minimmit-core"
+version = "0.0.0"
+edition.workspace = true
+description = "Core protocol state machine for Minimmit."
+publish = false
+
+[dependencies]
