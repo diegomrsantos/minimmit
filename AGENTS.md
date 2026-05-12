@@ -7,6 +7,12 @@ literal, and easy to audit.
 
 - After the bootstrap commit, do not commit directly to protected `main`.
 - Use a branch and pull request for every code change.
+- Do not prefix branch names or pull request titles with `codex` or `[codex]`.
+- Use semantic commit messages for commits and pull request titles, such as
+  `docs: expand README motivation`, `fix: correct threshold counting`, or
+  `feat: add vote handling`.
+- Name branches by change type and concern, such as `docs/readme-motivation`,
+  `fix/threshold-counting`, or `feat/vote-handling`.
 - Keep pull requests small and reviewable.
 - One pull request must cover one concern.
 - Do not mix docs, refactors, protocol behavior, test infrastructure, CI, or
