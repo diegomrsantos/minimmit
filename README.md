@@ -63,6 +63,9 @@ Event -> Core -> Ready
 that applies the protocol rules, and `Ready` is what an outer runtime should do
 next.
 
+Paper-derived protocol claims and evidence status are tracked in
+`docs/protocol-claims.md`.
+
 ## Status
 
 This implementation is experimental and is not for production use.
