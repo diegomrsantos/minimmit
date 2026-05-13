@@ -14,12 +14,9 @@
 
 ## Protocol And Evidence
 
-- [ ] Paper claim or protocol obligation identified when protocol behavior is
-      touched.
-- [ ] Failing test added first, or the evidence gap is explicitly deferred.
-- [ ] Evidence manifest updated when applicable.
+- [ ] Protocol behavior names its paper claim or explicit evidence gap.
+- [ ] Evidence manifest or PR text reflects the current support level.
 - [ ] No production shell concerns added to `crates/core`.
-- [ ] `proto-core-lab` behavior was not treated as authoritative.
 
 ## Review Focus
 

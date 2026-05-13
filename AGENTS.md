@@ -28,14 +28,10 @@ literal, and easy to audit.
 
 ## Protocol TDD And Evidence
 
-- For Minimmit protocol behavior, use the repo-scoped
-  `minimmit-protocol-tdd` skill.
-- Follow paper-driven TDD: identify the protocol claim, add a failing test or
-  explicit evidence gap, then implement the smallest deterministic behavior.
-- Treat `proto-core-lab` as architecture and test-harness inspiration, not as a
-  semantic authority.
-- Keep evidence manifests aligned with implemented behavior.
-- Do not mark a protocol obligation as satisfied without executable evidence.
+- Use the repo-scoped `minimmit-protocol-tdd` skill for protocol behavior.
+- Identify the paper claim and add a failing test or explicit evidence gap
+  before implementing protocol behavior.
+- Do not mark a protocol obligation satisfied without executable evidence.
 
 ## Rust Style
 

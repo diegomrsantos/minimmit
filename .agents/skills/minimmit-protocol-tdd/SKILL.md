@@ -9,9 +9,8 @@ metadata:
 
 ## Use This Skill When
 
-Use this skill for any change that touches Minimmit protocol behavior,
-`crates/core`, protocol tests, evidence manifests, replay or restart fixtures,
-model comparison, or paper-compliance review.
+Use this skill for protocol-facing changes or reviews that affect behavior,
+tests, evidence manifests, replay or restart fixtures, or model comparison.
 
 ## Semantic Authority
 
@@ -36,9 +35,7 @@ For every protocol behavior:
 4. Update the evidence manifest when one exists.
 5. Mark an obligation satisfied only when executable evidence backs it.
 
-Keep each PR to one protocol obligation or one tightly coupled group of
-obligations. Do not mix protocol behavior with docs, refactors, CI, formatting,
-or test infrastructure unless the dependency is real.
+If a change spans unrelated concerns, split it before implementation.
 
 ## Core Shape
 
@@ -78,17 +75,11 @@ determinism.
 ## Evidence Manifest Rules
 
 Use evidence manifests as a confidence ledger, not as a substitute for tests.
+They should carry exact obligation ids, source anchors, executable evidence,
+assumptions, and deferred gaps. Never mark an obligation passing without
+executable evidence.
 
-Each protocol obligation should connect to:
-
-- a stable obligation id
-- the relevant paper claim or algorithm reference
-- executable tests or fixtures
-- explicit assumptions
-- deferred gaps when evidence is not executable yet
-
-Never mark a protocol obligation as passing without executable evidence. If a
-manifest or audit tool is not present yet, keep the claim and evidence gap
+If a manifest or audit tool is not present yet, keep the claim and evidence gap
 visible in the PR text or nearby protocol documentation.
 
 ## Test Expectations
@@ -113,13 +104,11 @@ Known discrepancy risks require regression tests before or with implementation:
   forwarding
 - timeout and condition-b nullification following the paper conditions
 
-## Review Checklist
+## Before Finishing
 
-When reviewing protocol work, ask:
+Before handing off protocol work, verify:
 
-- Which paper claim is being implemented?
-- Was the failing test or evidence gap created before implementation?
-- Are thresholds and signer sets explicit enough to audit?
-- Are state transitions deterministic and replayable?
-- Did any production shell concern leak into `crates/core`?
-- Does the evidence manifest match the implementation and tests?
+- the paper claim or evidence gap is named
+- executable tests cover the behavior that changed
+- deterministic replay remains plausible from the API shape
+- the evidence manifest or PR text reflects the current support level
