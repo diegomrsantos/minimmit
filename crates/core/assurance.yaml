@@ -1,0 +1,232 @@
+schema: minimmit.crate-assurance.v1
+
+crate:
+  name: minimmit-core
+  path: crates/core
+  purpose: "Deterministic baseline Minimmit protocol core."
+
+source:
+  paper:
+    id: minimmit-paper
+    title: "Minimmit"
+    arxiv: "2508.10862"
+
+scope:
+  includes:
+    - "baseline Minimmit core protocol"
+    - "paper formal specification"
+    - "Algorithm 1"
+  excludes:
+    - "E-Minimmit"
+    - "erasure coding"
+    - "threshold signatures"
+    - "compressed nullifications"
+    - "runtime networking"
+    - "storage engine"
+    - "wall-clock timers"
+    - "real cryptography"
+
+vocabulary:
+  claim_status:
+    planned: "In scope for this crate, but implementation work has not started."
+    in_progress: "Implementation work or evidence exists, but linked evidence is not yet enough to mark the claim evidenced."
+    evidenced: "The claim has at least one linked implementation evidence artifact."
+  evidence_kind:
+    rust_test: "Executable Rust test against this crate."
+    rust_model_conformance: "Executable check connecting this crate to a model or spec."
+    machine_checked_proof: "Machine-checked proof about this crate or crate-to-model refinement."
+
+rules:
+  - "Claims outside this crate's scope are not listed as claims."
+  - "The ledger tracks evidence existence, not evidence quality or completeness."
+  - "Paper proofs are source anchors, not implementation evidence."
+  - "Model-only checks are not implementation evidence unless connected to Rust behavior."
+  - "Do not mark a claim evidenced without at least one linked implementation evidence artifact."
+  - "Each evidence entry must include kind and artifact."
+  - "Evidenced does not mean a protocol theorem has been re-proven for this crate."
+
+readiness:
+  rule: "The crate is ready for the baseline scope when every required claim is evidenced."
+  required_claims:
+    - MM-THRESHOLDS
+    - MM-DISTINCT-VALID-SENDERS
+    - MM-PARENT-SELECTION
+    - MM-VALID-PROPOSAL
+    - MM-FORWARDING
+    - MM-LEADER-PROPOSE
+    - MM-VOTE-VALID-PROPOSAL
+    - MM-TIMEOUT-NULLIFY
+    - MM-ADVANCE-NULLIFICATION
+    - MM-ADVANCE-M-NOTARIZATION
+    - MM-CONDITION-B-NULLIFY
+    - MM-FINALIZE-L
+    - MM-ONE-VOTE-PER-VIEW
+    - MM-X1-L-EXCLUDES-CONFLICTING-M
+    - MM-X2-L-EXCLUDES-NULLIFICATION
+    - MM-CONSISTENCY
+    - MM-VIEW-PROGRESSION
+    - MM-CORRECT-LEADER-L
+    - MM-LIVENESS
+
+assumptions:
+  ASM-BASELINE:
+    statement: "The crate targets baseline Minimmit, not E-Minimmit or later optimizations."
+    source_anchor:
+      sections: ["The formal specification"]
+      labels: ["formal", "alg1"]
+  ASM-FAULTS:
+    statement: "The validator set has size n, at most f Byzantine processors, and n >= 5f + 1."
+    source_anchor:
+      sections: ["The Setup", "Introduction"]
+      labels: ["setup", "intro"]
+  ASM-AUTHENTICATION:
+    statement: "The paper assumes authenticated signed messages; this crate may initially model authenticated signatures as signer identities while enforcing membership and distinctness."
+    source_anchor:
+      sections: ["The Setup", "The formal specification"]
+      labels: ["setup", "formal"]
+  ASM-DETERMINISTIC-CORE:
+    statement: "Async runtime, networking, storage, wall clocks, and real cryptography stay outside the protocol core; timers and message receipt are modeled as inputs."
+    source_anchor:
+      sections: ["The formal specification"]
+      labels: ["alg1"]
+  ASM-GENESIS:
+    statement: "Local state starts with the genesis block and M/L notarizations for genesis."
+    source_anchor:
+      sections: ["The formal specification"]
+      anchors: ["The local variable S"]
+
+claims:
+  MM-THRESHOLDS:
+    claim: "M-notarization and nullification thresholds are 2f + 1; L-notarization threshold is n - f; configuration must satisfy n >= 5f + 1. L equals 4f + 1 only in the minimal case n = 5f + 1."
+    source_anchor:
+      sections: ["The formal specification"]
+      anchors: ["M-notarisations", "L-notarisations", "Nullifications"]
+    status: planned
+    evidence: []
+  MM-DISTINCT-VALID-SENDERS:
+    claim: "Votes and nullify messages count only distinct valid processors from the validator set."
+    source_anchor:
+      sections: ["The formal specification"]
+      anchors: ["M-notarisations", "L-notarisations", "Nullifications"]
+    status: planned
+    evidence: []
+  MM-PARENT-SELECTION:
+    claim: "SelectParent(S, v) returns a block from the greatest prior view with an M-notarization, breaking ties by lexicographically least block."
+    source_anchor:
+      sections: ["The formal specification"]
+      anchors: ["The function SelectParent(S, v)"]
+    status: planned
+    evidence: []
+  MM-VALID-PROPOSAL:
+    claim: "A valid proposal for view v contains precisely one leader-signed view-v block, an M-notarization for its parent, and nullifications for every skipped view."
+    source_anchor:
+      sections: ["The formal specification"]
+      anchors: ["When S contains a valid proposal for view v"]
+    status: planned
+    evidence: []
+  MM-FORWARDING:
+    claim: "Processors forward new nullifications and M-notarizations. A nullification is new by first local occurrence per view and lexicographically least proof; an M-notarization is new by first local occurrence per block and lexicographically least proof. L-notarization forwarding is not required for liveness."
+    source_anchor:
+      sections: ["The formal specification"]
+      labels: ["forwardN", "forwardML"]
+      anchors: ["New nullifications and notarisations"]
+    status: planned
+    evidence: []
+  MM-LEADER-PROPOSE:
+    claim: "A leader that has not proposed in its current view proposes a child of SelectParent(S, v) and records that it has proposed."
+    source_anchor:
+      sections: ["Algorithm 1"]
+      labels: ["sendblock"]
+    status: planned
+    evidence: []
+  MM-VOTE-VALID-PROPOSAL:
+    claim: "A processor votes for a valid proposal only if it has not already voted and has not nullified the current view."
+    source_anchor:
+      sections: ["Algorithm 1"]
+      labels: ["votecheck", "vote1"]
+    status: planned
+    evidence: []
+  MM-TIMEOUT-NULLIFY:
+    claim: "On timeout in a view, a processor that has neither voted nor nullified sends nullify(v)."
+    source_anchor:
+      sections: ["Algorithm 1"]
+      labels: ["timeout1", "timeout2"]
+    status: planned
+    evidence: []
+  MM-ADVANCE-NULLIFICATION:
+    claim: "Receiving a nullification for the current view advances to the next view and resets per-view state."
+    source_anchor:
+      sections: ["Algorithm 1"]
+      labels: ["newview1"]
+    status: planned
+    evidence: []
+  MM-ADVANCE-M-NOTARIZATION:
+    claim: "Receiving an M-notarization for a current-view block advances to the next view; if the processor has not voted or nullified, it votes for that block before advancing."
+    source_anchor:
+      sections: ["Algorithm 1"]
+      labels: ["vote2", "newview2"]
+    status: planned
+    evidence: []
+  MM-CONDITION-B-NULLIFY:
+    claim: "After voting, a processor can nullify the current view upon 2f + 1 distinct messages that are each either nullify(v) or a vote for a different current-view block."
+    source_anchor:
+      sections: ["Algorithm 1"]
+      labels: ["beginN", "endN", "sendN"]
+    status: planned
+    evidence: []
+  MM-FINALIZE-L:
+    claim: "A new L-notarization finalizes the notarized block."
+    source_anchor:
+      sections: ["Algorithm 1", "The formal specification"]
+      anchors: ["L-notarisations", "Algorithm 1 finalization step"]
+    status: planned
+    evidence: []
+  MM-ONE-VOTE-PER-VIEW:
+    claim: "A correct processor votes for at most one block in each view."
+    source_anchor:
+      sections: ["Protocol Analysis"]
+      labels: ["singlevote"]
+    status: planned
+    evidence: []
+  MM-X1-L-EXCLUDES-CONFLICTING-M:
+    claim: "If a block receives an L-notarization, no distinct block in the same view receives an M-notarization."
+    source_anchor:
+      sections: ["Protocol Analysis"]
+      labels: ["X1"]
+    status: planned
+    evidence: []
+  MM-X2-L-EXCLUDES-NULLIFICATION:
+    claim: "If a block receives an L-notarization, its view does not receive a nullification."
+    source_anchor:
+      sections: ["Protocol Analysis"]
+      labels: ["X2"]
+    status: planned
+    evidence: []
+  MM-CONSISTENCY:
+    claim: "Inconsistent blocks cannot both be finalized."
+    source_anchor:
+      sections: ["Protocol Analysis"]
+      anchors: ["Consistency"]
+    status: planned
+    evidence: []
+  MM-VIEW-PROGRESSION:
+    claim: "Correct processors progress through views by receiving either a nullification or an M-notarization."
+    source_anchor:
+      sections: ["Protocol Analysis"]
+      anchors: ["Progression through views"]
+    status: planned
+    evidence: []
+  MM-CORRECT-LEADER-L:
+    claim: "A correct leader whose view begins after GST disseminates a block that receives an L-notarization."
+    source_anchor:
+      sections: ["Protocol Analysis"]
+      labels: ["L1"]
+    status: planned
+    evidence: []
+  MM-LIVENESS:
+    claim: "The baseline protocol satisfies liveness under the paper assumptions."
+    source_anchor:
+      sections: ["Protocol Analysis"]
+      labels: ["L2"]
+    status: planned
+    evidence: []
