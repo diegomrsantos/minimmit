@@ -9,10 +9,14 @@ Check that protocol logic stays in crates/core and that production shell
 concerns such as async runtimes, networking, storage engines, wall clocks, and
 node orchestration do not leak into the core crate.
 
-Prefer simple public APIs with literal names. Flag broad abstractions,
-framework-style scaffolding, and unused placeholders unless the current core
-crate behavior requires them.
+Prefer simple public APIs with literal protocol names. Flag broad abstractions,
+framework-style scaffolding, and unused placeholders unless tested core behavior
+requires them.
 
 When observable ordering matters, prefer deterministic data structures or
 explicit ordering.
+
+For protocol-facing APIs, check that the shape remains compatible with a
+deterministic Event -> Core -> Ready state machine and that tests can replay
+the same input into the same outputs.
 """

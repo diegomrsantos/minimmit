@@ -1,0 +1,6 @@
+interface:
+  display_name: "Minimmit Protocol TDD"
+  short_description: "Paper-driven tests and evidence for Minimmit"
+  default_prompt: "Use $minimmit-protocol-tdd to plan or implement a Minimmit core protocol change."
+policy:
+  allow_implicit_invocation: true

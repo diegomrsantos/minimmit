@@ -26,6 +26,17 @@ literal, and easy to audit.
 - Keep protocol behavior explicit and reviewable in the state machine.
 - Avoid broad framework work unless the core crate forces it.
 
+## Protocol TDD And Evidence
+
+- For Minimmit protocol behavior, use the repo-scoped
+  `minimmit-protocol-tdd` skill.
+- Follow paper-driven TDD: identify the protocol claim, add a failing test or
+  explicit evidence gap, then implement the smallest deterministic behavior.
+- Treat `proto-core-lab` as architecture and test-harness inspiration, not as a
+  semantic authority.
+- Keep evidence manifests aligned with implemented behavior.
+- Do not mark a protocol obligation as satisfied without executable evidence.
+
 ## Rust Style
 
 - Prefer simple, literal names.
