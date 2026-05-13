@@ -59,28 +59,21 @@ concerns belong outside `crates/core`.
 Initial signature modeling may use signer identities, but tests must enforce
 valid membership and distinct sender counting.
 
-## Required Obligation Coverage
+## Obligation Coverage
 
-Track these obligations as implementation work proceeds:
+The skill is not the canonical protocol obligation ledger. Keep exact
+obligation ids, statuses, source anchors, and evidence links in the evidence
+manifest or the protocol claims document once those exist.
 
-- `thresholds`: `n >= 5f + 1`, `M = 2f + 1`, `L = n - f`
-- `distinct_valid_senders`
-- `one_vote_per_view`
-- `view_monotonicity`
-- `proposal_validity`
-- `multiple_m_notarizations`
-- `parent_selection`
-- `timeout_nullification`
-- `condition_b_nullification`
-- `vote_on_m_notarization`
-- `finalization`
-- `no_conflicting_finalization`
-- `no_liveness_required_l_forwarding`
-- `replay_determinism`
-- `restart_determinism`
+When a change touches protocol behavior, make the relevant claim explicit and
+tie it to executable evidence. Unsupported claims must stay visible as deferred
+or warning entries. Do not imply paper completeness from partial tests.
 
-Unsupported obligations must stay explicit as deferred or warning entries. Do
-not imply paper completeness from partial tests.
+Before accepting protocol behavior, check for coverage of durable protocol
+risks: threshold arithmetic, distinct valid sender counting, one vote per view,
+view monotonicity, proposal validity, notarization, nullification,
+finalization, deterministic parent selection, replay determinism, and restart
+determinism.
 
 ## Evidence Manifest Rules
 
