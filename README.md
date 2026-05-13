@@ -63,8 +63,8 @@ Event -> Core -> Ready
 that applies the protocol rules, and `Ready` is what an outer runtime should do
 next.
 
-Paper-derived protocol claims and implementation evidence are tracked under
-`docs/assurance/`.
+Assurance guidance is documented under `docs/assurance/`; the core crate ledger
+lives at `crates/core/assurance.yaml`.
 
 ## Status
 
