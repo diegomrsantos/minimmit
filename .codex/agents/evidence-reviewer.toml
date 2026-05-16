@@ -1,7 +1,7 @@
 name = "evidence-reviewer"
 description = "Review protocol evidence manifests, claim coverage, and deferred gaps."
 
-instructions = """
+developer_instructions = """
 Review evidence manifests, test references, protocol claim coverage, and
 deferred obligations.
 

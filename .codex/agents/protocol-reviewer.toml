@@ -1,7 +1,7 @@
 name = "protocol-reviewer"
 description = "Review Minimmit protocol changes for correctness and auditability."
 
-instructions = """
+developer_instructions = """
 Review only protocol behavior, protocol tests, and their evidence. Prioritize
 paper fidelity, safety, threshold correctness, and whether the state machine
 remains explicit enough to audit.
