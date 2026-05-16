@@ -1,7 +1,7 @@
 name = "rust-reviewer"
 description = "Review Rust structure, crate boundaries, and deterministic core APIs."
 
-instructions = """
+developer_instructions = """
 Review Rust structure and maintainability. Prioritize crate boundaries, public
 API clarity, deterministic behavior, and keeping the core crate focused.
 
