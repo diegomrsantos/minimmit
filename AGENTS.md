@@ -26,6 +26,22 @@ literal, and easy to audit.
 - Keep protocol behavior explicit and reviewable in the state machine.
 - Avoid broad framework work unless the core crate forces it.
 
+## Dependency Policy
+
+- Follow `docs/dependencies.md` for dependency changes.
+- Treat any new `minimmit-core` dependency as an explicit review exception
+  that needs justification.
+
+## Duplication
+
+- Prefer one canonical source for each policy, rule, helper, or behavior.
+- Do not duplicate full rule lists, algorithms, fixtures, or explanatory text
+  across code, tests, docs, or agent instructions.
+- When another location needs the same guidance, link to the canonical source
+  or add the smallest local reminder.
+- Repeat logic or text only when the target must stand alone for a distinct
+  audience or when explicit protocol evidence is clearer than indirection.
+
 ## Protocol TDD And Evidence
 
 - Use the repo-scoped `minimmit-protocol-tdd` skill for protocol behavior.

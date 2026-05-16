@@ -13,6 +13,9 @@ Prefer simple public APIs with literal protocol names. Flag broad abstractions,
 framework-style scaffolding, and unused placeholders unless tested core behavior
 requires them.
 
+Flag avoidable duplication across implementation, tests, docs, or local agent
+instructions. Follow the repository duplication guidance in AGENTS.md.
+
 When observable ordering matters, prefer deterministic data structures or
 explicit ordering.
 
