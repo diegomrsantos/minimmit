@@ -26,6 +26,12 @@ literal, and easy to audit.
 - Keep protocol behavior explicit and reviewable in the state machine.
 - Avoid broad framework work unless the core crate forces it.
 
+## Dependency Policy
+
+- Follow `docs/dependencies.md` for dependency changes.
+- Treat any new `minimmit-core` dependency as an explicit review exception
+  that needs justification.
+
 ## Protocol TDD And Evidence
 
 - Use the repo-scoped `minimmit-protocol-tdd` skill for protocol behavior.

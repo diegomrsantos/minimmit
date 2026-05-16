@@ -64,7 +64,8 @@ that applies the protocol rules, and `Ready` is what an outer runtime should do
 next.
 
 Assurance guidance is documented under `docs/assurance/`; the core crate ledger
-lives at `crates/core/assurance.yaml`.
+lives at `crates/core/assurance.yaml`. Dependency policy is documented in
+`docs/dependencies.md`.
 
 ## Status
 
