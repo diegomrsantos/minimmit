@@ -23,9 +23,13 @@ Each crate owns its own assurance ledger. The core crate ledger is
 `crates/core/assurance.yaml`.
 
 The ledger tracks evidence existence, not evidence quality or completeness.
-`evidenced` means that at least one implementation evidence artifact is linked
-for the claim. It does not mean the protocol theorem has been re-proven for the
-Rust crate.
+`evidenced` means the claim itself is backed by linked implementation evidence
+for the implemented protocol path. Evidence for a helper or primitive can
+support an `in_progress` claim, but it does not by itself make a larger protocol
+claim evidenced.
+
+`evidenced` does not mean the protocol theorem has been re-proven for the Rust
+crate.
 
 Keep entries small:
 
