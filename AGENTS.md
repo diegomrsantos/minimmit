@@ -32,6 +32,16 @@ literal, and easy to audit.
 - Treat any new `minimmit-core` dependency as an explicit review exception
   that needs justification.
 
+## Duplication
+
+- Prefer one canonical source for each policy, rule, helper, or behavior.
+- Do not duplicate full rule lists, algorithms, fixtures, or explanatory text
+  across code, tests, docs, or agent instructions.
+- When another location needs the same guidance, link to the canonical source
+  or add the smallest local reminder.
+- Repeat logic or text only when the target must stand alone for a distinct
+  audience or when explicit protocol evidence is clearer than indirection.
+
 ## Protocol TDD And Evidence
 
 - Use the repo-scoped `minimmit-protocol-tdd` skill for protocol behavior.
