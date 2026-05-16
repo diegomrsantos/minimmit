@@ -101,8 +101,10 @@ claims:
     source_anchor:
       sections: ["The formal specification"]
       anchors: ["M-notarisations", "L-notarisations", "Nullifications"]
-    status: planned
-    evidence: []
+    status: evidenced
+    evidence:
+      - kind: rust_test
+        artifact: crates/core/tests/thresholds.rs
   MM-DISTINCT-VALID-SENDERS:
     claim: "Votes and nullify messages count only distinct valid processors from the validator set."
     source_anchor:
