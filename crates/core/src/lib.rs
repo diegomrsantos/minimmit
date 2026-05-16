@@ -3,11 +3,39 @@
 //! Protocol behavior in this crate should stay deterministic and reviewable
 //! from the core state machine.
 
-use std::fmt;
+use std::{collections::BTreeSet, fmt};
 
 const MIN_VALIDATOR_FAULT_FACTOR: usize = 5;
 const M_AND_NULLIFICATION_FAULT_FACTOR: usize = 2;
 const THRESHOLD_BASE: usize = 1;
+
+/// Validator identity used by the protocol core.
+///
+/// This is a deterministic stand-in for authenticated signer identity. Real
+/// cryptographic verification stays outside the core crate; protocol rules
+/// count only identities that are members of the configured committee.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ValidatorId(u64);
+
+impl ValidatorId {
+    /// Creates a validator identity.
+    #[must_use]
+    pub const fn new(id: u64) -> Self {
+        Self(id)
+    }
+
+    /// Returns the underlying deterministic identity value.
+    #[must_use]
+    pub const fn get(self) -> u64 {
+        self.0
+    }
+}
+
+impl fmt::Display for ValidatorId {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "validator {}", self.0)
+    }
+}
 
 /// Protocol configuration for baseline Minimmit.
 ///
@@ -125,6 +153,115 @@ impl fmt::Display for ConfigError {
 }
 
 impl std::error::Error for ConfigError {}
+
+/// Deterministic validator committee for baseline Minimmit.
+///
+/// The committee defines which signer identities can contribute to threshold
+/// evidence. Sender counts derived from this type ignore identities outside
+/// the committee and count duplicate committee members only once.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Committee {
+    config: Config,
+    validators: BTreeSet<ValidatorId>,
+}
+
+impl Committee {
+    /// Creates a committee from unique validator identities and fault bound
+    /// `f`.
+    ///
+    /// The committee size is the configuration's `n`, so the validator set
+    /// must be unique and satisfy `n >= 5f + 1`.
+    pub fn new<I>(validators: I, fault_bound: usize) -> Result<Self, CommitteeError>
+    where
+        I: IntoIterator<Item = ValidatorId>,
+    {
+        let mut validator_set = BTreeSet::new();
+
+        for validator in validators {
+            if !validator_set.insert(validator) {
+                return Err(CommitteeError::DuplicateValidator { validator });
+            }
+        }
+
+        let config =
+            Config::new(validator_set.len(), fault_bound).map_err(CommitteeError::InvalidConfig)?;
+
+        Ok(Self {
+            config,
+            validators: validator_set,
+        })
+    }
+
+    /// Returns the protocol configuration for this committee.
+    #[must_use]
+    pub fn config(&self) -> Config {
+        self.config
+    }
+
+    /// Returns true when the validator is a committee member.
+    #[must_use]
+    pub fn contains(&self, validator: ValidatorId) -> bool {
+        self.validators.contains(&validator)
+    }
+
+    /// Iterates validators in deterministic identity order.
+    pub fn validators(&self) -> impl Iterator<Item = ValidatorId> + '_ {
+        self.validators.iter().copied()
+    }
+
+    /// Counts distinct senders that are members of this committee.
+    ///
+    /// Duplicate senders count once and non-members do not contribute.
+    pub fn count_distinct_valid_senders<I>(&self, senders: I) -> usize
+    where
+        I: IntoIterator<Item = ValidatorId>,
+    {
+        let mut distinct = BTreeSet::new();
+
+        for sender in senders {
+            if self.contains(sender) {
+                distinct.insert(sender);
+            }
+        }
+
+        distinct.len()
+    }
+}
+
+/// Committee construction errors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommitteeError {
+    /// The validator list contained the same identity more than once.
+    DuplicateValidator {
+        /// Duplicated validator identity.
+        validator: ValidatorId,
+    },
+    /// The committee size and fault bound did not form a valid configuration.
+    InvalidConfig(ConfigError),
+}
+
+impl fmt::Display for CommitteeError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::DuplicateValidator { validator } => {
+                write!(
+                    formatter,
+                    "{validator} appears more than once in the committee"
+                )
+            }
+            Self::InvalidConfig(error) => write!(formatter, "{error}"),
+        }
+    }
+}
+
+impl std::error::Error for CommitteeError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::DuplicateValidator { .. } => None,
+            Self::InvalidConfig(error) => Some(error),
+        }
+    }
+}
 
 fn minimum_validator_count(fault_bound: usize) -> Result<usize, ConfigError> {
     threshold(MIN_VALIDATOR_FAULT_FACTOR, fault_bound)

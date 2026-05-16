@@ -29,8 +29,8 @@ scope:
 vocabulary:
   claim_status:
     planned: "In scope for this crate, but implementation work has not started."
-    in_progress: "Implementation work or evidence exists, but linked evidence is not yet enough to mark the claim evidenced."
-    evidenced: "The claim has at least one linked implementation evidence artifact."
+    in_progress: "Implementation work or supporting evidence exists, but the claim itself is not yet backed by linked implementation evidence."
+    evidenced: "The claim itself is backed by linked implementation evidence for the implemented protocol path."
   evidence_kind:
     rust_test: "Executable Rust test against this crate."
     rust_model_conformance: "Executable check connecting this crate to a model or spec."
@@ -41,7 +41,8 @@ rules:
   - "The ledger tracks evidence existence, not evidence quality or completeness."
   - "Paper proofs are source anchors, not implementation evidence."
   - "Model-only checks are not implementation evidence unless connected to Rust behavior."
-  - "Do not mark a claim evidenced without at least one linked implementation evidence artifact."
+  - "Do not mark a claim evidenced without linked implementation evidence for the claim itself."
+  - "Evidence for a helper or primitive can support an in-progress claim, but does not by itself make a larger protocol claim evidenced."
   - "Each evidence entry must include kind and artifact."
   - "Evidenced does not mean a protocol theorem has been re-proven for this crate."
 
@@ -110,8 +111,10 @@ claims:
     source_anchor:
       sections: ["The formal specification"]
       anchors: ["M-notarisations", "L-notarisations", "Nullifications"]
-    status: planned
-    evidence: []
+    status: in_progress
+    evidence:
+      - kind: rust_test
+        artifact: crates/core/tests/validator_senders.rs
   MM-PARENT-SELECTION:
     claim: "SelectParent(S, v) returns a block from the greatest prior view with an M-notarization, breaking ties by lexicographically least block."
     source_anchor:
