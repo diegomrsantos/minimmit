@@ -1,0 +1,69 @@
+name: Protocol work
+description: Protocol behavior, evidence, assurance, or paper-claim work.
+title: "protocol: "
+labels:
+  - area:protocol
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for protocol behavior, protocol tests, evidence, or assurance work.
+
+        See `docs/issues.md` for the canonical issue guidance.
+  - type: input
+    id: goal
+    attributes:
+      label: Goal
+      description: State the concrete protocol work in one sentence.
+      placeholder: "Implement or evidence ..."
+    validations:
+      required: true
+  - type: textarea
+    id: claim
+    attributes:
+      label: Claim or evidence gap
+      description: Name the `crates/core/assurance.yaml` claim id, or explain the new evidence gap.
+      placeholder: "MM-PARENT-SELECTION, or new evidence gap: ..."
+    validations:
+      required: true
+  - type: textarea
+    id: paper-anchor
+    attributes:
+      label: Paper anchor
+      description: Name the relevant paper section, label, or anchor. Do not paste long paper text.
+      placeholder: "Section ..., label ..., anchor ..."
+    validations:
+      required: true
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected protocol behavior
+      description: Describe the behavior concretely enough to write a test.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence or test plan
+      description: Name the failing test, scenario, or evidence artifact expected.
+      placeholder: "Add a Rust test showing ..."
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope boundaries
+      description: List in-scope and out-of-scope work.
+      value: |
+        In scope:
+
+        Out of scope:
+    validations:
+      required: true
+  - type: textarea
+    id: related
+    attributes:
+      label: Related context
+      description: Link related issues, pull requests, decisions, or notes.
+    validations:
+      required: false
