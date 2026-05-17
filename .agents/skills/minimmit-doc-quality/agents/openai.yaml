@@ -1,0 +1,6 @@
+interface:
+  display_name: "Minimmit Doc Quality"
+  short_description: "Rust docs and comments for Minimmit"
+  default_prompt: "Use $minimmit-doc-quality when creating, modifying, or reviewing Rust code in Minimmit."
+policy:
+  allow_implicit_invocation: true

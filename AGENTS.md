@@ -55,3 +55,5 @@ literal, and easy to audit.
 - Keep public APIs clear and narrow.
 - Avoid unused placeholders.
 - Use deterministic data structures when observable ordering matters.
+- Use the repo-scoped `minimmit-doc-quality` skill when creating or modifying
+  Rust code, public APIs, protocol-facing types, tests, or non-obvious helpers.
