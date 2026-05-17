@@ -120,8 +120,10 @@ claims:
     source_anchor:
       sections: ["The formal specification"]
       anchors: ["The function SelectParent(S, v)"]
-    status: planned
-    evidence: []
+    status: evidenced
+    evidence:
+      - kind: rust_test
+        artifact: crates/core/tests/parent_selection.rs
   MM-VALID-PROPOSAL:
     claim: "A valid proposal for view v contains precisely one leader-signed view-v block, an M-notarization for its parent, and nullifications for every skipped view."
     source_anchor:
