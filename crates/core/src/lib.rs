@@ -347,6 +347,125 @@ impl std::error::Error for CommitteeError {
     }
 }
 
+/// Baseline block data for views after genesis.
+///
+/// A `Block` carries the fields later protocol rules compare or validate for a
+/// proposed block: its identity, view, parent identity, and ordered transaction
+/// identifiers. View 0 is reserved for genesis, so [`Block::new`] rejects it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Block {
+    id: BlockId,
+    view: ViewNumber,
+    parent: BlockId,
+    transactions: Vec<TransactionId>,
+}
+
+impl Block {
+    /// Creates a block for a non-genesis view.
+    ///
+    /// The parent is required, and transactions keep caller-provided order
+    /// because block contents are order-sensitive. Duplicate transaction
+    /// identifiers are rejected so a constructed block has one canonical
+    /// transaction list.
+    pub fn new<I>(
+        id: BlockId,
+        view: ViewNumber,
+        parent: BlockId,
+        transactions: I,
+    ) -> Result<Self, BlockError>
+    where
+        I: IntoIterator<Item = TransactionId>,
+    {
+        if view.get() == 0 {
+            return Err(BlockError::GenesisView { view });
+        }
+
+        let transactions = distinct_transactions(transactions)?;
+
+        Ok(Self {
+            id,
+            view,
+            parent,
+            transactions,
+        })
+    }
+
+    /// Returns the block identity.
+    #[must_use]
+    pub fn id(&self) -> BlockId {
+        self.id
+    }
+
+    /// Returns the block view.
+    #[must_use]
+    pub fn view(&self) -> ViewNumber {
+        self.view
+    }
+
+    /// Returns the parent block identity.
+    #[must_use]
+    pub fn parent(&self) -> BlockId {
+        self.parent
+    }
+
+    /// Returns the modeled transactions in block order.
+    #[must_use]
+    pub fn transactions(&self) -> &[TransactionId] {
+        &self.transactions
+    }
+}
+
+/// Block construction errors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BlockError {
+    /// The block view was reserved for genesis.
+    GenesisView {
+        /// View used for the attempted block construction.
+        view: ViewNumber,
+    },
+    /// The block listed a transaction more than once.
+    DuplicateTransaction {
+        /// Duplicated transaction identity.
+        transaction: TransactionId,
+    },
+}
+
+impl fmt::Display for BlockError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::GenesisView { view } => {
+                write!(formatter, "{view} is reserved for genesis")
+            }
+            Self::DuplicateTransaction { transaction } => {
+                write!(
+                    formatter,
+                    "{transaction} appears more than once in the block"
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for BlockError {}
+
+fn distinct_transactions<I>(transactions: I) -> Result<Vec<TransactionId>, BlockError>
+where
+    I: IntoIterator<Item = TransactionId>,
+{
+    let mut transaction_set = BTreeSet::new();
+    let mut transaction_list = Vec::new();
+
+    for transaction in transactions {
+        if !transaction_set.insert(transaction) {
+            return Err(BlockError::DuplicateTransaction { transaction });
+        }
+
+        transaction_list.push(transaction);
+    }
+
+    Ok(transaction_list)
+}
+
 fn minimum_validator_count(fault_bound: usize) -> Result<usize, ConfigError> {
     threshold(MIN_VALIDATOR_FAULT_FACTOR, fault_bound)
 }
