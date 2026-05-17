@@ -578,6 +578,88 @@ impl MNotarization {
     }
 }
 
+/// Evidence that a block has the L-notarization vote threshold in one view.
+///
+/// `LNotarization` has the same fields as [`MNotarization`] but is constructed
+/// with the `n - f` L threshold from the active committee configuration.
+/// Proposal validity, finalization, and state-machine transition rules are
+/// checked outside this evidence type.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LNotarization {
+    block: BlockId,
+    view: ViewNumber,
+    signers: BTreeSet<ValidatorId>,
+}
+
+impl LNotarization {
+    /// Creates an L-notarization from votes and the active committee.
+    ///
+    /// Returns [`EvidenceError`] when the vote set is empty, includes a
+    /// non-member or duplicate signer, mixes block/view targets, or has fewer
+    /// than `n - f` distinct valid signers.
+    pub fn from_votes<I>(committee: &Committee, votes: I) -> Result<Self, EvidenceError>
+    where
+        I: IntoIterator<Item = Vote>,
+    {
+        let mut votes = votes.into_iter();
+        let first = votes.next().ok_or(EvidenceError::Empty)?;
+        let mut signers = BTreeSet::new();
+
+        let first_signer = first.signer();
+        if !committee.contains(first_signer) {
+            return Err(EvidenceError::UnknownSigner {
+                signer: first_signer,
+            });
+        }
+        signers.insert(first_signer);
+
+        for vote in votes {
+            if vote.block() != first.block() || vote.view() != first.view() {
+                return Err(EvidenceError::ConflictingVoteTarget {
+                    expected_block: first.block(),
+                    expected_view: first.view(),
+                    actual_block: vote.block(),
+                    actual_view: vote.view(),
+                });
+            }
+
+            let signer = vote.signer();
+            if !committee.contains(signer) {
+                return Err(EvidenceError::UnknownSigner { signer });
+            }
+
+            if !signers.insert(signer) {
+                return Err(EvidenceError::DuplicateSigner { signer });
+            }
+        }
+
+        require_threshold(signers.len(), committee.config().l_threshold())?;
+
+        Ok(Self {
+            block: first.block(),
+            view: first.view(),
+            signers,
+        })
+    }
+
+    /// Returns the notarized block.
+    #[must_use]
+    pub fn block(&self) -> BlockId {
+        self.block
+    }
+
+    /// Returns the notarized view.
+    #[must_use]
+    pub fn view(&self) -> ViewNumber {
+        self.view
+    }
+
+    /// Iterates signer identities in deterministic order.
+    pub fn signers(&self) -> impl Iterator<Item = ValidatorId> + '_ {
+        self.signers.iter().copied()
+    }
+}
+
 /// Block construction errors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BlockError {

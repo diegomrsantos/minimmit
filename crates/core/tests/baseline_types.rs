@@ -1,6 +1,6 @@
 use minimmit_core::{
-    Block, BlockError, BlockId, Committee, EvidenceError, MNotarization, Nullify, TransactionId,
-    ValidatorId, ViewNumber, Vote,
+    Block, BlockError, BlockId, Committee, EvidenceError, LNotarization, MNotarization, Nullify,
+    TransactionId, ValidatorId, ViewNumber, Vote,
 };
 
 const ONE_FAULT: usize = 1;
@@ -134,6 +134,48 @@ fn m_notarization_rejects_below_threshold_votes() {
         Err(EvidenceError::BelowThreshold {
             signer_count: 2,
             threshold: committee.config().m_threshold(),
+        })
+    );
+}
+
+#[test]
+fn l_notarization_accepts_n_minus_f_threshold_votes_for_one_block() {
+    let committee = committee();
+    let notarization = LNotarization::from_votes(
+        &committee,
+        [
+            vote(4, 10, 3),
+            vote(0, 10, 3),
+            vote(2, 10, 3),
+            vote(1, 10, 3),
+            vote(3, 10, 3),
+        ],
+    )
+    .expect("five valid distinct votes meet the L threshold when n = 6 and f = 1");
+
+    assert_eq!(notarization.block(), block(10));
+    assert_eq!(notarization.view(), view(3));
+    assert_eq!(
+        notarization.signers().collect::<Vec<_>>(),
+        [
+            validator(0),
+            validator(1),
+            validator(2),
+            validator(3),
+            validator(4),
+        ]
+    );
+}
+
+#[test]
+fn l_notarization_rejects_below_threshold_votes() {
+    let committee = committee();
+
+    assert_eq!(
+        LNotarization::from_votes(&committee, [vote(0, 10, 3), vote(1, 10, 3), vote(2, 10, 3)]),
+        Err(EvidenceError::BelowThreshold {
+            signer_count: 3,
+            threshold: committee.config().l_threshold(),
         })
     );
 }
