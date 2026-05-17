@@ -306,6 +306,22 @@ impl Committee {
         self.validators.iter().copied()
     }
 
+    /// Returns the deterministic leader for `view`.
+    ///
+    /// The paper defines `lead(v)` by indexing processors modulo `n`. The core
+    /// uses committee identity order as the deterministic processor order.
+    #[must_use]
+    pub fn leader(&self, view: ViewNumber) -> ValidatorId {
+        let validator_count = self.validators.len() as u64;
+        let leader_index = (view.get() % validator_count) as usize;
+
+        self.validators
+            .iter()
+            .copied()
+            .nth(leader_index)
+            .expect("validated committees are non-empty")
+    }
+
     /// Counts distinct senders that are members of this committee.
     ///
     /// Duplicate senders count once and non-members do not contribute.
@@ -425,6 +441,37 @@ impl Block {
     #[must_use]
     pub fn transactions(&self) -> &[TransactionId] {
         &self.transactions
+    }
+}
+
+/// Modeled signed block proposal input.
+///
+/// Real cryptographic verification stays outside the core crate. This type
+/// records the identity that authenticated a block so the pure proposal
+/// validity rule can check whether the signer is the view leader.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SignedBlock {
+    signer: ValidatorId,
+    block: Block,
+}
+
+impl SignedBlock {
+    /// Creates a signed block input.
+    #[must_use]
+    pub fn new(signer: ValidatorId, block: Block) -> Self {
+        Self { signer, block }
+    }
+
+    /// Returns the validator identity that signed the block.
+    #[must_use]
+    pub fn signer(&self) -> ValidatorId {
+        self.signer
+    }
+
+    /// Returns the signed block.
+    #[must_use]
+    pub fn block(&self) -> &Block {
+        &self.block
     }
 }
 
@@ -766,6 +813,38 @@ impl SelectedParent {
     }
 }
 
+/// Successful proposal validation result.
+///
+/// This is the protocol-visible projection of the proposal predicate: the
+/// unique valid proposal block for the view and the parent selected by
+/// `SelectParent(S, v)`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ValidatedProposal {
+    block: BlockId,
+    view: ViewNumber,
+    parent: SelectedParent,
+}
+
+impl ValidatedProposal {
+    /// Returns the valid proposal block identity.
+    #[must_use]
+    pub const fn block(self) -> BlockId {
+        self.block
+    }
+
+    /// Returns the proposal view.
+    #[must_use]
+    pub const fn view(self) -> ViewNumber {
+        self.view
+    }
+
+    /// Returns the selected parent the proposal extends.
+    #[must_use]
+    pub const fn parent(self) -> SelectedParent {
+        self.parent
+    }
+}
+
 /// Selects a parent block for `view` from prior M-notarizations.
 ///
 /// This implements the baseline `MM-PARENT-SELECTION` claim: choose a block
@@ -810,6 +889,51 @@ where
     }
 
     Ok(selected)
+}
+
+/// Validates the baseline proposal predicate for `view`.
+///
+/// This implements the `MM-VALID-PROPOSAL` claim over modeled local `S`
+/// contents: exactly one view-`view` block signed by the deterministic leader,
+/// an M-notarization for the selected parent, and nullifications for every
+/// skipped view after that parent.
+///
+/// # Errors
+///
+/// Returns [`ProposalValidationError`] when the modeled local contents do not
+/// satisfy the proposal-validity predicate.
+pub fn validate_proposal<Blocks, MNotarizations, Nullifications>(
+    committee: &Committee,
+    view: ViewNumber,
+    signed_blocks: Blocks,
+    m_notarizations: MNotarizations,
+    nullifications: Nullifications,
+) -> Result<ValidatedProposal, ProposalValidationError>
+where
+    Blocks: IntoIterator,
+    Blocks::Item: Borrow<SignedBlock>,
+    MNotarizations: IntoIterator,
+    MNotarizations::Item: Borrow<MNotarization>,
+    Nullifications: IntoIterator,
+    Nullifications::Item: Borrow<Nullification>,
+{
+    if view == ViewNumber::GENESIS {
+        return Err(ProposalValidationError::GenesisView { view });
+    }
+
+    let signed_block = unique_leader_signed_block(committee, view, signed_blocks)?;
+    let m_notarizations = collect_borrowed(m_notarizations);
+    let selected_parent =
+        select_parent(&m_notarizations, view).expect("non-genesis views can select a parent");
+
+    validate_parent(&signed_block, selected_parent, &m_notarizations, view)?;
+    validate_skipped_view_nullifications(selected_parent.view(), view, nullifications)?;
+
+    Ok(ValidatedProposal {
+        block: signed_block.block().id(),
+        view,
+        parent: selected_parent,
+    })
 }
 
 /// Block construction errors.
@@ -973,6 +1097,113 @@ impl fmt::Display for ParentSelectionError {
 
 impl std::error::Error for ParentSelectionError {}
 
+/// Proposal validation errors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProposalValidationError {
+    /// Proposal validation was requested for the genesis view.
+    GenesisView {
+        /// View used for the attempted proposal validation.
+        view: ViewNumber,
+    },
+    /// No candidate block was present for the requested view.
+    MissingBlock {
+        /// View without a candidate proposal block.
+        view: ViewNumber,
+    },
+    /// A candidate block for the view was not signed by that view's leader.
+    WrongLeader {
+        /// Proposal view.
+        view: ViewNumber,
+        /// Expected deterministic leader.
+        expected: ValidatorId,
+        /// Actual signer.
+        actual: ValidatorId,
+    },
+    /// More than one leader-signed candidate block was present for the view.
+    ConflictingBlocks {
+        /// Proposal view.
+        view: ViewNumber,
+        /// First candidate block identity.
+        first: BlockId,
+        /// Second candidate block identity.
+        second: BlockId,
+    },
+    /// The proposed parent had no prior M-notarization evidence.
+    MissingParentNotarization {
+        /// Parent block identity from the proposal.
+        parent: BlockId,
+    },
+    /// The proposed parent did not match `SelectParent(S, v)`.
+    WrongParent {
+        /// Parent selected from local M-notarizations.
+        expected: BlockId,
+        /// Parent named by the proposed block.
+        actual: BlockId,
+    },
+    /// More than one nullification was supplied for the same view.
+    DuplicateNullification {
+        /// Duplicated nullification view.
+        view: ViewNumber,
+    },
+    /// A skipped view after the selected parent lacked nullification evidence.
+    MissingNullification {
+        /// Missing nullification view.
+        view: ViewNumber,
+    },
+}
+
+impl fmt::Display for ProposalValidationError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::GenesisView { view } => {
+                write!(formatter, "cannot validate a proposal for {view}")
+            }
+            Self::MissingBlock { view } => {
+                write!(formatter, "no proposal block is present for {view}")
+            }
+            Self::WrongLeader {
+                view,
+                expected,
+                actual,
+            } => write!(
+                formatter,
+                "proposal block for {view} was signed by {actual}, expected {expected}"
+            ),
+            Self::ConflictingBlocks {
+                view,
+                first,
+                second,
+            } => write!(
+                formatter,
+                "proposal for {view} has conflicting leader-signed blocks {first} and {second}"
+            ),
+            Self::MissingParentNotarization { parent } => {
+                write!(
+                    formatter,
+                    "proposal parent {parent} has no prior M-notarization"
+                )
+            }
+            Self::WrongParent { expected, actual } => {
+                write!(
+                    formatter,
+                    "proposal parent is {actual}, expected {expected}"
+                )
+            }
+            Self::DuplicateNullification { view } => {
+                write!(
+                    formatter,
+                    "proposal evidence repeats nullification for {view}"
+                )
+            }
+            Self::MissingNullification { view } => {
+                write!(formatter, "proposal is missing nullification for {view}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for ProposalValidationError {}
+
 /// Message type that can contribute to threshold evidence.
 trait EvidenceMessage {
     /// Target all messages in one evidence value must agree on.
@@ -1044,6 +1275,139 @@ where
     }
 
     Ok(transaction_list)
+}
+
+/// Clones borrowed-or-owned modeled inputs into an owned list for validation.
+///
+/// The public validators accept either owned values or references; owning the
+/// list locally lets later checks make multiple deterministic passes.
+fn collect_borrowed<T, B, I>(items: I) -> Vec<T>
+where
+    T: Clone,
+    B: Borrow<T>,
+    I: IntoIterator<Item = B>,
+{
+    items
+        .into_iter()
+        .map(|item| item.borrow().clone())
+        .collect()
+}
+
+/// Returns the unique leader-signed block for `view` from modeled local input.
+///
+/// Blocks for other views are ignored because the proposal predicate is scoped
+/// to one requested view. A non-leader signature or a second leader-signed
+/// block for the same view makes the proposal evidence invalid.
+fn unique_leader_signed_block<B, I>(
+    committee: &Committee,
+    view: ViewNumber,
+    signed_blocks: I,
+) -> Result<SignedBlock, ProposalValidationError>
+where
+    B: Borrow<SignedBlock>,
+    I: IntoIterator<Item = B>,
+{
+    let leader = committee.leader(view);
+    let signed_blocks: Vec<SignedBlock> = collect_borrowed(signed_blocks);
+    let mut selected: Option<SignedBlock> = None;
+
+    for signed_block in signed_blocks {
+        if signed_block.block().view() != view {
+            continue;
+        }
+
+        if signed_block.signer() != leader {
+            return Err(ProposalValidationError::WrongLeader {
+                view,
+                expected: leader,
+                actual: signed_block.signer(),
+            });
+        }
+
+        if let Some(first) = &selected {
+            return Err(ProposalValidationError::ConflictingBlocks {
+                view,
+                first: first.block().id(),
+                second: signed_block.block().id(),
+            });
+        }
+
+        selected = Some(signed_block);
+    }
+
+    selected.ok_or(ProposalValidationError::MissingBlock { view })
+}
+
+/// Checks that a proposal extends the selected M-notarized parent.
+///
+/// The error distinguishes a parent that has no prior M-notarization from a
+/// notarized parent that loses to `SelectParent(S, v)`.
+fn validate_parent(
+    signed_block: &SignedBlock,
+    selected_parent: SelectedParent,
+    m_notarizations: &[MNotarization],
+    view: ViewNumber,
+) -> Result<(), ProposalValidationError> {
+    let actual_parent = signed_block.block().parent();
+    if actual_parent == selected_parent.block() {
+        return Ok(());
+    }
+
+    let has_prior_m_notarization = actual_parent == BlockId::GENESIS
+        || m_notarizations.iter().any(|notarization| {
+            notarization.block() == actual_parent && notarization.view() < view
+        });
+
+    if has_prior_m_notarization {
+        Err(ProposalValidationError::WrongParent {
+            expected: selected_parent.block(),
+            actual: actual_parent,
+        })
+    } else {
+        Err(ProposalValidationError::MissingParentNotarization {
+            parent: actual_parent,
+        })
+    }
+}
+
+/// Checks that every skipped view after `parent_view` has one nullification.
+///
+/// Extra nullifications are harmless for this predicate, but duplicate
+/// nullifications for the same view are rejected as conflicting local evidence.
+fn validate_skipped_view_nullifications<N, I>(
+    parent_view: ViewNumber,
+    proposal_view: ViewNumber,
+    nullifications: I,
+) -> Result<(), ProposalValidationError>
+where
+    N: Borrow<Nullification>,
+    I: IntoIterator<Item = N>,
+{
+    let mut by_view = BTreeMap::new();
+
+    for nullification in nullifications {
+        let nullification = nullification.borrow();
+        let nullified_view = nullification.view();
+        match by_view.entry(nullified_view) {
+            Vacant(entry) => {
+                entry.insert(());
+            }
+            Occupied(_) => {
+                return Err(ProposalValidationError::DuplicateNullification {
+                    view: nullified_view,
+                });
+            }
+        }
+    }
+
+    for skipped_view in (parent_view.get() + 1)..proposal_view.get() {
+        let skipped_view = ViewNumber::new(skipped_view);
+        if !by_view.contains_key(&skipped_view) {
+            return Err(ProposalValidationError::MissingNullification { view: skipped_view });
+        }
+    }
+
+    Ok(())
 }
 
 /// Collects one-target threshold evidence from modeled messages.

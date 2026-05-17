@@ -129,8 +129,10 @@ claims:
     source_anchor:
       sections: ["The formal specification"]
       anchors: ["When S contains a valid proposal for view v"]
-    status: planned
-    evidence: []
+    status: evidenced
+    evidence:
+      - kind: rust_test
+        artifact: crates/core/tests/proposal_validity.rs
   MM-FORWARDING:
     claim: "Processors forward new nullifications and M-notarizations. A nullification is new by first local occurrence per view and lexicographically least proof; an M-notarization is new by first local occurrence per block and lexicographically least proof. L-notarization forwarding is not required for liveness."
     source_anchor:
