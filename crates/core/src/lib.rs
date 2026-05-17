@@ -426,6 +426,71 @@ impl fmt::Display for BlockError {
 
 impl std::error::Error for BlockError {}
 
+/// Modeled vote message for a block in a view.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Vote {
+    signer: ValidatorId,
+    block: BlockId,
+    view: ViewNumber,
+}
+
+impl Vote {
+    /// Creates a modeled vote signed by a validator identity.
+    #[must_use]
+    pub const fn new(signer: ValidatorId, block: BlockId, view: ViewNumber) -> Self {
+        Self {
+            signer,
+            block,
+            view,
+        }
+    }
+
+    /// Returns the signer identity.
+    #[must_use]
+    pub const fn signer(self) -> ValidatorId {
+        self.signer
+    }
+
+    /// Returns the voted block.
+    #[must_use]
+    pub const fn block(self) -> BlockId {
+        self.block
+    }
+
+    /// Returns the voted view.
+    #[must_use]
+    pub const fn view(self) -> ViewNumber {
+        self.view
+    }
+}
+
+/// Modeled nullify message for a view.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Nullify {
+    signer: ValidatorId,
+    view: ViewNumber,
+}
+
+impl Nullify {
+    /// Creates a modeled nullify message signed by a validator identity.
+    #[must_use]
+    pub const fn new(signer: ValidatorId, view: ViewNumber) -> Self {
+        Self { signer, view }
+    }
+
+    /// Returns the signer identity.
+    #[must_use]
+    pub const fn signer(self) -> ValidatorId {
+        self.signer
+    }
+
+    /// Returns the nullified view.
+    #[must_use]
+    pub const fn view(self) -> ViewNumber {
+        self.view
+    }
+}
+
 fn distinct_transactions<I>(transactions: I) -> Result<Vec<TransactionId>, BlockError>
 where
     I: IntoIterator<Item = TransactionId>,
