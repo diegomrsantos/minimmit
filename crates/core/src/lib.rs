@@ -415,6 +415,85 @@ impl Block {
     }
 }
 
+/// Modeled vote message from one validator for one block in one view.
+///
+/// A `Vote` is the raw input later evidence constructors aggregate. It records
+/// the signer identity that authenticated the message, the voted block, and
+/// the view in which the vote was cast. Protocol validity is contextual: it
+/// depends on the active committee, distinct signer counting, quorum threshold,
+/// and state-machine rules. This type stores the signed fields; evidence and
+/// state-machine constructors apply those checks with the necessary context.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Vote {
+    signer: ValidatorId,
+    block: BlockId,
+    view: ViewNumber,
+}
+
+impl Vote {
+    /// Creates a vote message.
+    #[must_use]
+    pub const fn new(signer: ValidatorId, block: BlockId, view: ViewNumber) -> Self {
+        Self {
+            signer,
+            block,
+            view,
+        }
+    }
+
+    /// Returns the validator identity that signed the vote.
+    #[must_use]
+    pub const fn signer(self) -> ValidatorId {
+        self.signer
+    }
+
+    /// Returns the block this vote targets.
+    #[must_use]
+    pub const fn block(self) -> BlockId {
+        self.block
+    }
+
+    /// Returns the view in which this vote was cast.
+    #[must_use]
+    pub const fn view(self) -> ViewNumber {
+        self.view
+    }
+}
+
+/// Modeled nullify message from one validator for one view.
+///
+/// A `Nullify` is the raw input later nullification evidence constructors
+/// aggregate. It records signer intent for a view. Protocol validity is
+/// contextual: it depends on the active committee, distinct signer counting,
+/// quorum threshold, and state-machine rules. This type stores the signed
+/// fields; evidence and state-machine constructors apply those checks with the
+/// necessary context.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Nullify {
+    signer: ValidatorId,
+    view: ViewNumber,
+}
+
+impl Nullify {
+    /// Creates a nullify message.
+    #[must_use]
+    pub const fn new(signer: ValidatorId, view: ViewNumber) -> Self {
+        Self { signer, view }
+    }
+
+    /// Returns the validator identity that signed the nullify message.
+    #[must_use]
+    pub const fn signer(self) -> ValidatorId {
+        self.signer
+    }
+
+    /// Returns the view this nullify message targets.
+    #[must_use]
+    pub const fn view(self) -> ViewNumber {
+        self.view
+    }
+}
+
 /// Block construction errors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BlockError {
