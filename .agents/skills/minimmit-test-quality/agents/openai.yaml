@@ -1,0 +1,6 @@
+interface:
+  display_name: "Minimmit Test Quality"
+  short_description: "Readable behavior tests for Minimmit"
+  default_prompt: "Use $minimmit-test-quality when adding, modifying, or reviewing tests in Minimmit."
+policy:
+  allow_implicit_invocation: true

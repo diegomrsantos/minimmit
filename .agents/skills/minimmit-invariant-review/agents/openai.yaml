@@ -1,0 +1,6 @@
+interface:
+  display_name: "Minimmit Invariant Review"
+  short_description: "Explicit invariants for Minimmit state"
+  default_prompt: "Use $minimmit-invariant-review when changing constructors, state transitions, validation, or trusted assumptions in Minimmit."
+policy:
+  allow_implicit_invocation: true
