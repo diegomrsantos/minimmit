@@ -65,7 +65,8 @@ next.
 
 Assurance guidance is documented under `docs/assurance/`; the core crate ledger
 lives at `crates/core/assurance.yaml`. Dependency policy is documented in
-`docs/dependencies.md`.
+`docs/dependencies.md`, and release policy is documented in
+`docs/releases.md`.
 
 ## Status
 
