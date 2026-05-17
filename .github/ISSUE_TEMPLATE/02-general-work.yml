@@ -1,0 +1,69 @@
+name: General work
+description: Docs, tooling, maintenance, non-protocol bugs, or non-protocol refactors.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use the protocol work form if this issue changes protocol behavior, protocol evidence, or `crates/core/assurance.yaml`.
+
+        See `docs/issues.md` for the canonical issue guidance.
+  - type: dropdown
+    id: work-type
+    attributes:
+      label: Work type
+      options:
+        - Documentation
+        - Tooling
+        - Bug
+        - Refactor
+        - Maintenance
+        - Workflow
+    validations:
+      required: true
+  - type: input
+    id: goal
+    attributes:
+      label: Goal
+      description: State the concrete work in one sentence.
+    validations:
+      required: true
+  - type: textarea
+    id: current-state
+    attributes:
+      label: Current state or problem
+      description: Describe the current behavior, gap, or problem.
+    validations:
+      required: true
+  - type: textarea
+    id: desired-outcome
+    attributes:
+      label: Desired outcome
+      description: Describe what should be true when the issue is done.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: List clear checks, commands, or review criteria.
+      placeholder: "- ..."
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope boundaries
+      description: List in-scope and out-of-scope work.
+      value: |
+        In scope:
+
+        Out of scope:
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Related context
+      description: Link related issues, pull requests, decisions, files, or notes.
+    validations:
+      required: false

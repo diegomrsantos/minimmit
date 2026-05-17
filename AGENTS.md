@@ -17,6 +17,8 @@ literal, and easy to audit.
 - One pull request must cover one concern.
 - Do not mix docs, refactors, protocol behavior, test infrastructure, CI, or
   formatting unless one change truly depends on the other.
+- When creating or refining issues, follow `docs/issues.md`; use issue
+  templates as forms, not as the canonical policy.
 
 ## Protocol Boundaries
 
