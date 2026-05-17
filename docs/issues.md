@@ -9,6 +9,10 @@ rereading unrelated history or rediscovering the whole paper.
 Keep each issue to one concern. Split unrelated protocol behavior, tests,
 docs, CI, refactors, and workflow changes into separate issues.
 
+Size issues so they can normally be closed by one small, reviewable pull
+request. If the work is too broad for one focused PR, narrow the issue before
+implementation or split out only the next useful execution slice.
+
 A good issue includes:
 
 - a concise title in the form `verb + object`
@@ -18,6 +22,11 @@ A good issue includes:
 - acceptance criteria or required evidence
 - explicit out-of-scope work
 - related issues, pull requests, or decisions
+
+For roadmap or milestone work, link the relevant roadmap section or milestone
+instead of copying broad scope into the issue. Keep broad tracking in roadmaps
+or milestones; the issue should still describe the specific PR-sized slice
+being implemented now.
 
 For bugs, include exact reproduction steps, expected behavior, and actual
 behavior. For docs and process work, describe the reader or workflow that
