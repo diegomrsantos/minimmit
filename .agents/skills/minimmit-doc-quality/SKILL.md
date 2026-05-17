@@ -20,9 +20,10 @@ documentation quality; it is not protocol evidence.
 
 Make a small documentation pass over the files you touched:
 
-1. Identify touched public items, protocol-facing internals, tests, test
-   helpers, and private helpers.
-2. Add or update rustdoc for public items and protocol-facing concepts.
+1. Identify every function, method, type, trait, test helper, and private
+   helper you created or changed.
+2. Add or update rustdoc for public items, protocol-facing concepts, and any
+   non-obvious private helper contract created in the change.
 3. Add ordinary comments only for non-obvious invariants, ordering, policy,
    safety reasoning, or protocol assumptions.
 4. Remove or avoid comments that restate signatures, assertions, or obvious
