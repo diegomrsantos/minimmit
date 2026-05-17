@@ -1,6 +1,6 @@
 use minimmit_core::{
     Block, BlockError, BlockId, Committee, EvidenceError, LNotarization, MNotarization,
-    Nullification, Nullify, TransactionId, ValidatorId, ViewNumber, Vote,
+    Nullification, Nullify, Proposal, ProposalError, TransactionId, ValidatorId, ViewNumber, Vote,
 };
 
 const ONE_FAULT: usize = 1;
@@ -246,5 +246,59 @@ fn evidence_rejects_mixed_nullification_views() {
             expected_view: view(4),
             actual_view: view(5),
         })
+    );
+}
+
+#[test]
+fn proposal_preserves_nullifications_by_view_order() {
+    let committee = committee();
+    let parent_notarization =
+        MNotarization::from_votes(&committee, [vote(0, 8, 4), vote(1, 8, 4), vote(2, 8, 4)])
+            .expect("parent is M-notarized");
+    let skipped_view_6 =
+        Nullification::from_nullifies(&committee, [nullify(0, 6), nullify(1, 6), nullify(2, 6)])
+            .expect("view 6 is nullified");
+    let skipped_view_5 =
+        Nullification::from_nullifies(&committee, [nullify(0, 5), nullify(1, 5), nullify(2, 5)])
+            .expect("view 5 is nullified");
+    let block = Block::new(block(12), view(7), block(8), [transaction(1)])
+        .expect("transactions are distinct");
+
+    let proposal = Proposal::new(
+        validator(3),
+        block,
+        parent_notarization,
+        [skipped_view_6, skipped_view_5],
+    )
+    .expect("skipped views are unique");
+
+    assert_eq!(proposal.proposer(), validator(3));
+    assert_eq!(
+        proposal
+            .nullifications()
+            .map(|nullification| nullification.view())
+            .collect::<Vec<_>>(),
+        [view(5), view(6)]
+    );
+}
+
+#[test]
+fn proposal_rejects_duplicate_nullification_views() {
+    let committee = committee();
+    let parent_notarization =
+        MNotarization::from_votes(&committee, [vote(0, 8, 4), vote(1, 8, 4), vote(2, 8, 4)])
+            .expect("parent is M-notarized");
+    let first =
+        Nullification::from_nullifies(&committee, [nullify(0, 5), nullify(1, 5), nullify(2, 5)])
+            .expect("view 5 is nullified");
+    let second =
+        Nullification::from_nullifies(&committee, [nullify(3, 5), nullify(4, 5), nullify(5, 5)])
+            .expect("view 5 is nullified");
+    let block = Block::new(block(12), view(7), block(8), [transaction(1)])
+        .expect("transactions are distinct");
+
+    assert_eq!(
+        Proposal::new(validator(3), block, parent_notarization, [first, second]),
+        Err(ProposalError::DuplicateNullification { view: view(5) })
     );
 }

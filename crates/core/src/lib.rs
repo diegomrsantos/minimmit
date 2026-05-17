@@ -3,7 +3,10 @@
 //! Protocol behavior in this crate should stay deterministic and reviewable
 //! from the core state machine.
 
-use std::{collections::BTreeSet, fmt};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt,
+};
 
 const MIN_VALIDATOR_FAULT_FACTOR: usize = 5;
 const M_AND_NULLIFICATION_FAULT_FACTOR: usize = 2;
@@ -693,6 +696,93 @@ impl fmt::Display for EvidenceError {
 }
 
 impl std::error::Error for EvidenceError {}
+
+/// Baseline proposal data carried by the protocol core.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Proposal {
+    proposer: ValidatorId,
+    block: Block,
+    parent_notarization: MNotarization,
+    nullifications: BTreeMap<ViewNumber, Nullification>,
+}
+
+impl Proposal {
+    /// Creates a proposal from a block, parent M-notarization, and
+    /// skipped-view nullifications.
+    pub fn new<I>(
+        proposer: ValidatorId,
+        block: Block,
+        parent_notarization: MNotarization,
+        nullifications: I,
+    ) -> Result<Self, ProposalError>
+    where
+        I: IntoIterator<Item = Nullification>,
+    {
+        let mut by_view = BTreeMap::new();
+
+        for nullification in nullifications {
+            let view = nullification.view();
+            if by_view.insert(view, nullification).is_some() {
+                return Err(ProposalError::DuplicateNullification { view });
+            }
+        }
+
+        Ok(Self {
+            proposer,
+            block,
+            parent_notarization,
+            nullifications: by_view,
+        })
+    }
+
+    /// Returns the modeled proposer identity.
+    #[must_use]
+    pub fn proposer(&self) -> ValidatorId {
+        self.proposer
+    }
+
+    /// Returns the proposed block.
+    #[must_use]
+    pub fn block(&self) -> &Block {
+        &self.block
+    }
+
+    /// Returns the parent M-notarization carried by this proposal.
+    #[must_use]
+    pub fn parent_notarization(&self) -> &MNotarization {
+        &self.parent_notarization
+    }
+
+    /// Iterates skipped-view nullifications in deterministic view order.
+    pub fn nullifications(&self) -> impl Iterator<Item = &Nullification> {
+        self.nullifications.values()
+    }
+}
+
+/// Proposal construction errors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProposalError {
+    /// The proposal carried more than one nullification for a view.
+    DuplicateNullification {
+        /// Duplicated nullification view.
+        view: ViewNumber,
+    },
+}
+
+impl fmt::Display for ProposalError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::DuplicateNullification { view } => {
+                write!(
+                    formatter,
+                    "proposal contains more than one nullification for {view}"
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for ProposalError {}
 
 struct VoteEvidence {
     block: BlockId,
