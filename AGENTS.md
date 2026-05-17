@@ -19,6 +19,7 @@ literal, and easy to audit.
   formatting unless one change truly depends on the other.
 - When creating or refining issues, follow `docs/issues.md`; use issue
   templates as forms, not as the canonical policy.
+- When creating or refining milestones, follow `docs/milestones.md`.
 
 ## Protocol Boundaries
 
