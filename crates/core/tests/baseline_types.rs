@@ -1,9 +1,18 @@
 use minimmit_core::{
-    Block, BlockError, BlockId, Nullify, TransactionId, ValidatorId, ViewNumber, Vote,
+    Block, BlockError, BlockId, Committee, EvidenceError, MNotarization, Nullify, TransactionId,
+    ValidatorId, ViewNumber, Vote,
 };
+
+const ONE_FAULT: usize = 1;
+const MIN_VALIDATORS_WITH_ONE_FAULT: u64 = 6;
 
 fn block(id: u64) -> BlockId {
     BlockId::new(id)
+}
+
+fn committee() -> Committee {
+    Committee::new(validators(MIN_VALIDATORS_WITH_ONE_FAULT), ONE_FAULT)
+        .expect("committee satisfies n >= 5f + 1")
 }
 
 fn transaction(id: u64) -> TransactionId {
@@ -14,8 +23,16 @@ fn validator(id: u64) -> ValidatorId {
     ValidatorId::new(id)
 }
 
+fn validators(count: u64) -> Vec<ValidatorId> {
+    (0..count).map(validator).collect()
+}
+
 fn view(number: u64) -> ViewNumber {
     ViewNumber::new(number)
+}
+
+fn vote(signer: u64, block_id: u64, view_number: u64) -> Vote {
+    Vote::new(validator(signer), block(block_id), view(view_number))
 }
 
 #[test]
@@ -91,4 +108,84 @@ fn nullify_records_signer_and_view() {
 
     assert_eq!(nullify.signer(), validator(2));
     assert_eq!(nullify.view(), view(3));
+}
+
+#[test]
+fn m_notarization_accepts_distinct_valid_threshold_votes_for_one_block() {
+    let committee = committee();
+    let notarization =
+        MNotarization::from_votes(&committee, [vote(2, 10, 3), vote(0, 10, 3), vote(1, 10, 3)])
+            .expect("three valid distinct votes meet the M threshold when f = 1");
+
+    assert_eq!(notarization.block(), block(10));
+    assert_eq!(notarization.view(), view(3));
+    assert_eq!(
+        notarization.signers().collect::<Vec<_>>(),
+        [validator(0), validator(1), validator(2)]
+    );
+}
+
+#[test]
+fn m_notarization_rejects_below_threshold_votes() {
+    let committee = committee();
+
+    assert_eq!(
+        MNotarization::from_votes(&committee, [vote(0, 10, 3), vote(1, 10, 3)]),
+        Err(EvidenceError::BelowThreshold {
+            signer_count: 2,
+            threshold: committee.config().m_threshold(),
+        })
+    );
+}
+
+#[test]
+fn evidence_rejects_empty_inputs() {
+    let committee = committee();
+
+    assert_eq!(
+        MNotarization::from_votes(&committee, []),
+        Err(EvidenceError::Empty)
+    );
+}
+
+#[test]
+fn evidence_rejects_duplicate_signers() {
+    let committee = committee();
+
+    assert_eq!(
+        MNotarization::from_votes(&committee, [vote(0, 10, 3), vote(1, 10, 3), vote(0, 10, 3)],),
+        Err(EvidenceError::DuplicateSigner {
+            signer: validator(0),
+        })
+    );
+}
+
+#[test]
+fn evidence_rejects_unknown_signers() {
+    let committee = committee();
+
+    assert_eq!(
+        MNotarization::from_votes(
+            &committee,
+            [vote(0, 10, 3), vote(1, 10, 3), vote(99, 10, 3)],
+        ),
+        Err(EvidenceError::UnknownSigner {
+            signer: validator(99),
+        })
+    );
+}
+
+#[test]
+fn evidence_rejects_mixed_vote_targets() {
+    let committee = committee();
+
+    assert_eq!(
+        MNotarization::from_votes(&committee, [vote(0, 10, 3), vote(1, 11, 3), vote(2, 10, 3)],),
+        Err(EvidenceError::ConflictingVoteTarget {
+            expected_block: block(10),
+            expected_view: view(3),
+            actual_block: block(11),
+            actual_view: view(3),
+        })
+    );
 }
