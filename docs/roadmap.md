@@ -84,7 +84,7 @@ deterministic state machine.
 
 Includes:
 
-- `Core`, `Event`, and `Ready`
+- `Processor`, `Event`, and `Ready`
 - local view state
 - observed protocol artifacts
 - deterministic ready outputs
@@ -132,7 +132,7 @@ Done when:
 
 - every supported baseline claim is evidenced or explicitly deferred
 - evidence entries link to executable Rust tests or model conformance checks
-- the core API remains replayable and deterministic
+- the processor API remains replayable and deterministic
 
 ### types-boundary-v0
 
