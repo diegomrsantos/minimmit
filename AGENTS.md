@@ -45,6 +45,8 @@ literal, and easy to audit.
 ## Protocol TDD And Evidence
 
 - Use the repo-scoped `minimmit-protocol-tdd` skill for protocol behavior.
+- Use the repo-scoped `minimmit-protocol-scenario-testing` skill for
+  event-driven protocol scenarios and semantic-effect tests.
 - Identify the paper claim and add a failing test or explicit evidence gap
   before implementing protocol behavior.
 - Do not mark a protocol obligation satisfied without executable evidence.

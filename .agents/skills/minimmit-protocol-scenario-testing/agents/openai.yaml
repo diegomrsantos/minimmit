@@ -1,0 +1,6 @@
+interface:
+  display_name: "Minimmit Protocol Scenario Testing"
+  short_description: "Event-driven protocol scenarios for Minimmit"
+  default_prompt: "Use $minimmit-protocol-scenario-testing for event-driven protocol scenarios and semantic-effect tests in Minimmit."
+policy:
+  allow_implicit_invocation: true
