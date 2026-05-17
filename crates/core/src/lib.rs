@@ -494,6 +494,90 @@ impl Nullify {
     }
 }
 
+/// Evidence that a block has the M-notarization vote threshold in one view.
+///
+/// `MNotarization` values are constructed from votes plus the active
+/// committee. Construction checks that every signer is a committee member, each
+/// signer appears once, all votes target the same block and view, and the
+/// number of distinct valid signers meets the `2f + 1` M threshold. Proposal
+/// validity and state-machine transition rules are checked outside this
+/// evidence type.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MNotarization {
+    block: BlockId,
+    view: ViewNumber,
+    signers: BTreeSet<ValidatorId>,
+}
+
+impl MNotarization {
+    /// Creates an M-notarization from votes and the active committee.
+    ///
+    /// Returns [`EvidenceError`] when the vote set is empty, includes a
+    /// non-member or duplicate signer, mixes block/view targets, or has fewer
+    /// than `2f + 1` distinct valid signers.
+    pub fn from_votes<I>(committee: &Committee, votes: I) -> Result<Self, EvidenceError>
+    where
+        I: IntoIterator<Item = Vote>,
+    {
+        let mut votes = votes.into_iter();
+        let first = votes.next().ok_or(EvidenceError::Empty)?;
+        let mut signers = BTreeSet::new();
+
+        let first_signer = first.signer();
+        if !committee.contains(first_signer) {
+            return Err(EvidenceError::UnknownSigner {
+                signer: first_signer,
+            });
+        }
+        signers.insert(first_signer);
+
+        for vote in votes {
+            if vote.block() != first.block() || vote.view() != first.view() {
+                return Err(EvidenceError::ConflictingVoteTarget {
+                    expected_block: first.block(),
+                    expected_view: first.view(),
+                    actual_block: vote.block(),
+                    actual_view: vote.view(),
+                });
+            }
+
+            let signer = vote.signer();
+            if !committee.contains(signer) {
+                return Err(EvidenceError::UnknownSigner { signer });
+            }
+
+            if !signers.insert(signer) {
+                return Err(EvidenceError::DuplicateSigner { signer });
+            }
+        }
+
+        require_threshold(signers.len(), committee.config().m_threshold())?;
+
+        Ok(Self {
+            block: first.block(),
+            view: first.view(),
+            signers,
+        })
+    }
+
+    /// Returns the notarized block.
+    #[must_use]
+    pub fn block(&self) -> BlockId {
+        self.block
+    }
+
+    /// Returns the notarized view.
+    #[must_use]
+    pub fn view(&self) -> ViewNumber {
+        self.view
+    }
+
+    /// Iterates signer identities in deterministic order.
+    pub fn signers(&self) -> impl Iterator<Item = ValidatorId> + '_ {
+        self.signers.iter().copied()
+    }
+}
+
 /// Block construction errors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BlockError {
@@ -527,6 +611,73 @@ impl fmt::Display for BlockError {
 
 impl std::error::Error for BlockError {}
 
+/// Evidence construction errors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EvidenceError {
+    /// No messages were supplied.
+    Empty,
+    /// The same signer appeared more than once.
+    DuplicateSigner {
+        /// Duplicated signer identity.
+        signer: ValidatorId,
+    },
+    /// A signer is not in the active committee.
+    UnknownSigner {
+        /// Non-member signer identity.
+        signer: ValidatorId,
+    },
+    /// Votes did not all target the same block and view.
+    ConflictingVoteTarget {
+        /// Expected block from the first vote.
+        expected_block: BlockId,
+        /// Expected view from the first vote.
+        expected_view: ViewNumber,
+        /// Conflicting vote block.
+        actual_block: BlockId,
+        /// Conflicting vote view.
+        actual_view: ViewNumber,
+    },
+    /// The evidence had fewer distinct valid signers than required.
+    BelowThreshold {
+        /// Number of distinct valid signers.
+        signer_count: usize,
+        /// Required threshold.
+        threshold: usize,
+    },
+}
+
+impl fmt::Display for EvidenceError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Empty => write!(formatter, "evidence is empty"),
+            Self::DuplicateSigner { signer } => {
+                write!(formatter, "{signer} appears more than once in evidence")
+            }
+            Self::UnknownSigner { signer } => {
+                write!(formatter, "{signer} is not a committee member")
+            }
+            Self::ConflictingVoteTarget {
+                expected_block,
+                expected_view,
+                actual_block,
+                actual_view,
+            } => write!(
+                formatter,
+                "vote targets {actual_block} in {actual_view}, expected {expected_block} in {expected_view}"
+            ),
+            Self::BelowThreshold {
+                signer_count,
+                threshold,
+            } => write!(
+                formatter,
+                "evidence has {signer_count} distinct valid signers, below threshold {threshold}"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for EvidenceError {}
+
 fn distinct_transactions<I>(transactions: I) -> Result<Vec<TransactionId>, BlockError>
 where
     I: IntoIterator<Item = TransactionId>,
@@ -543,6 +694,18 @@ where
     }
 
     Ok(transaction_list)
+}
+
+/// Requires an evidence signer count to meet the requested threshold.
+fn require_threshold(signer_count: usize, threshold: usize) -> Result<(), EvidenceError> {
+    if signer_count < threshold {
+        return Err(EvidenceError::BelowThreshold {
+            signer_count,
+            threshold,
+        });
+    }
+
+    Ok(())
 }
 
 fn minimum_validator_count(fault_bound: usize) -> Result<usize, ConfigError> {
