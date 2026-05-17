@@ -1,4 +1,6 @@
-use minimmit_core::{Block, BlockError, BlockId, TransactionId, ViewNumber};
+use minimmit_core::{
+    Block, BlockError, BlockId, Nullify, TransactionId, ValidatorId, ViewNumber, Vote,
+};
 
 fn block(id: u64) -> BlockId {
     BlockId::new(id)
@@ -6,6 +8,10 @@ fn block(id: u64) -> BlockId {
 
 fn transaction(id: u64) -> TransactionId {
     TransactionId::new(id)
+}
+
+fn validator(id: u64) -> ValidatorId {
+    ValidatorId::new(id)
 }
 
 fn view(number: u64) -> ViewNumber {
@@ -70,4 +76,21 @@ fn block_rejects_duplicate_transactions() {
             transaction: transaction(3),
         })
     );
+}
+
+#[test]
+fn vote_records_signer_block_and_view() {
+    let vote = Vote::new(validator(2), block(8), view(4));
+
+    assert_eq!(vote.signer(), validator(2));
+    assert_eq!(vote.block(), block(8));
+    assert_eq!(vote.view(), view(4));
+}
+
+#[test]
+fn nullify_records_signer_and_view() {
+    let nullify = Nullify::new(validator(2), view(4));
+
+    assert_eq!(nullify.signer(), validator(2));
+    assert_eq!(nullify.view(), view(4));
 }
