@@ -4,6 +4,7 @@
 //! from the core state machine.
 
 use std::{
+    borrow::Borrow,
     collections::{
         btree_map::Entry::{Occupied, Vacant},
         BTreeMap, BTreeSet,
@@ -52,6 +53,9 @@ impl fmt::Display for ValidatorId {
 pub struct ViewNumber(u64);
 
 impl ViewNumber {
+    /// The genesis view.
+    pub const GENESIS: Self = Self(0);
+
     /// Creates a view number from its deterministic counter value.
     #[must_use]
     pub const fn new(number: u64) -> Self {
@@ -80,6 +84,9 @@ impl fmt::Display for ViewNumber {
 pub struct BlockId(u64);
 
 impl BlockId {
+    /// The genesis block identity.
+    pub const GENESIS: Self = Self(0);
+
     /// Creates a block identity from its modeled hash value.
     #[must_use]
     pub const fn new(id: u64) -> Self {
@@ -382,7 +389,7 @@ impl Block {
     where
         I: IntoIterator<Item = TransactionId>,
     {
-        if view.get() == 0 {
+        if view == ViewNumber::GENESIS {
             return Err(BlockError::GenesisView { view });
         }
 
@@ -725,6 +732,86 @@ impl Proposal {
     }
 }
 
+/// Parent chosen by the baseline `SelectParent(S, v)` rule.
+///
+/// Genesis is represented explicitly because the initial core state assumes a
+/// genesis block with genesis notarizations even when callers provide no
+/// non-genesis M-notarization evidence to [`select_parent`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SelectedParent {
+    block: BlockId,
+    view: ViewNumber,
+}
+
+impl SelectedParent {
+    /// Returns the implicit genesis parent.
+    #[must_use]
+    pub const fn genesis() -> Self {
+        Self {
+            block: BlockId::GENESIS,
+            view: ViewNumber::GENESIS,
+        }
+    }
+
+    /// Returns the selected parent block.
+    #[must_use]
+    pub const fn block(self) -> BlockId {
+        self.block
+    }
+
+    /// Returns the selected parent view.
+    #[must_use]
+    pub const fn view(self) -> ViewNumber {
+        self.view
+    }
+}
+
+/// Selects a parent block for `view` from prior M-notarizations.
+///
+/// This implements the baseline `MM-PARENT-SELECTION` claim: choose a block
+/// from the greatest prior view with an M-notarization, breaking ties in that
+/// view by the least [`BlockId`]. Genesis is implicit, so the result is
+/// [`SelectedParent::genesis`] when no non-genesis prior M-notarization exists.
+///
+/// # Errors
+///
+/// Returns [`ParentSelectionError::GenesisView`] when asked to select a parent
+/// for genesis.
+pub fn select_parent<I, N>(
+    m_notarizations: I,
+    view: ViewNumber,
+) -> Result<SelectedParent, ParentSelectionError>
+where
+    I: IntoIterator<Item = N>,
+    N: Borrow<MNotarization>,
+{
+    if view == ViewNumber::GENESIS {
+        return Err(ParentSelectionError::GenesisView { view });
+    }
+
+    let mut selected = SelectedParent::genesis();
+
+    for notarization in m_notarizations {
+        let notarization = notarization.borrow();
+        let notarized_view = notarization.view();
+        if notarized_view <= ViewNumber::GENESIS || notarized_view >= view {
+            continue;
+        }
+
+        let notarized_block = notarization.block();
+        if notarized_view > selected.view
+            || (notarized_view == selected.view && notarized_block < selected.block)
+        {
+            selected = SelectedParent {
+                block: notarized_block,
+                view: notarized_view,
+            };
+        }
+    }
+
+    Ok(selected)
+}
+
 /// Block construction errors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BlockError {
@@ -863,6 +950,28 @@ impl fmt::Display for ProposalError {
 }
 
 impl std::error::Error for ProposalError {}
+
+/// Parent selection errors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParentSelectionError {
+    /// Parent selection was requested for the genesis view.
+    GenesisView {
+        /// View used for the attempted parent selection.
+        view: ViewNumber,
+    },
+}
+
+impl fmt::Display for ParentSelectionError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::GenesisView { view } => {
+                write!(formatter, "cannot select a parent for {view}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for ParentSelectionError {}
 
 /// Message type that can contribute to threshold evidence.
 trait EvidenceMessage {
