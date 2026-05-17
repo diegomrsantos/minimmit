@@ -335,6 +335,115 @@ impl std::error::Error for CommitteeError {
     }
 }
 
+/// Baseline Minimmit block data.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Block {
+    id: BlockId,
+    view: ViewNumber,
+    parent: Option<BlockId>,
+    transactions: Vec<TransactionId>,
+}
+
+impl Block {
+    /// Creates the genesis block.
+    #[must_use]
+    pub fn genesis(id: BlockId) -> Self {
+        Self {
+            id,
+            view: ViewNumber::new(0),
+            parent: None,
+            transactions: Vec::new(),
+        }
+    }
+
+    /// Creates a non-genesis block with a parent and modeled transactions.
+    pub fn new<I>(
+        id: BlockId,
+        view: ViewNumber,
+        parent: BlockId,
+        transactions: I,
+    ) -> Result<Self, BlockError>
+    where
+        I: IntoIterator<Item = TransactionId>,
+    {
+        let transactions = distinct_transactions(transactions)?;
+
+        Ok(Self {
+            id,
+            view,
+            parent: Some(parent),
+            transactions,
+        })
+    }
+
+    /// Returns the block identity.
+    #[must_use]
+    pub fn id(&self) -> BlockId {
+        self.id
+    }
+
+    /// Returns the block view.
+    #[must_use]
+    pub fn view(&self) -> ViewNumber {
+        self.view
+    }
+
+    /// Returns the parent block identity, if this is not genesis.
+    #[must_use]
+    pub fn parent(&self) -> Option<BlockId> {
+        self.parent
+    }
+
+    /// Returns the modeled transactions in block order.
+    #[must_use]
+    pub fn transactions(&self) -> &[TransactionId] {
+        &self.transactions
+    }
+}
+
+/// Block construction errors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BlockError {
+    /// The block listed a transaction more than once.
+    DuplicateTransaction {
+        /// Duplicated transaction identity.
+        transaction: TransactionId,
+    },
+}
+
+impl fmt::Display for BlockError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::DuplicateTransaction { transaction } => {
+                write!(
+                    formatter,
+                    "{transaction} appears more than once in the block"
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for BlockError {}
+
+fn distinct_transactions<I>(transactions: I) -> Result<Vec<TransactionId>, BlockError>
+where
+    I: IntoIterator<Item = TransactionId>,
+{
+    let mut transaction_set = BTreeSet::new();
+    let mut transaction_list = Vec::new();
+
+    for transaction in transactions {
+        if !transaction_set.insert(transaction) {
+            return Err(BlockError::DuplicateTransaction { transaction });
+        }
+
+        transaction_list.push(transaction);
+    }
+
+    Ok(transaction_list)
+}
+
 fn minimum_validator_count(fault_bound: usize) -> Result<usize, ConfigError> {
     threshold(MIN_VALIDATOR_FAULT_FACTOR, fault_bound)
 }
