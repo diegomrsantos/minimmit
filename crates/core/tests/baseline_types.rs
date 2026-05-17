@@ -1,6 +1,6 @@
 use minimmit_core::{
-    Block, BlockError, BlockId, Committee, EvidenceError, LNotarization, MNotarization, Nullify,
-    TransactionId, ValidatorId, ViewNumber, Vote,
+    Block, BlockError, BlockId, Committee, EvidenceError, LNotarization, MNotarization,
+    Nullification, Nullify, TransactionId, ValidatorId, ViewNumber, Vote,
 };
 
 const ONE_FAULT: usize = 1;
@@ -33,6 +33,10 @@ fn view(number: u64) -> ViewNumber {
 
 fn vote(signer: u64, block_id: u64, view_number: u64) -> Vote {
     Vote::new(validator(signer), block(block_id), view(view_number))
+}
+
+fn nullify(signer: u64, view_number: u64) -> Nullify {
+    Nullify::new(validator(signer), view(view_number))
 }
 
 #[test]
@@ -181,11 +185,42 @@ fn l_notarization_rejects_below_threshold_votes() {
 }
 
 #[test]
+fn nullification_accepts_distinct_valid_threshold_messages_for_one_view() {
+    let committee = committee();
+    let nullification =
+        Nullification::from_nullifies(&committee, [nullify(2, 3), nullify(0, 3), nullify(1, 3)])
+            .expect("three valid distinct nullify messages meet the threshold when f = 1");
+
+    assert_eq!(nullification.view(), view(3));
+    assert_eq!(
+        nullification.signers().collect::<Vec<_>>(),
+        [validator(0), validator(1), validator(2)]
+    );
+}
+
+#[test]
+fn nullification_rejects_below_threshold_messages() {
+    let committee = committee();
+
+    assert_eq!(
+        Nullification::from_nullifies(&committee, [nullify(0, 3), nullify(1, 3)]),
+        Err(EvidenceError::BelowThreshold {
+            signer_count: 2,
+            threshold: committee.config().nullification_threshold(),
+        })
+    );
+}
+
+#[test]
 fn evidence_rejects_empty_inputs() {
     let committee = committee();
 
     assert_eq!(
         MNotarization::from_votes(&committee, []),
+        Err(EvidenceError::Empty)
+    );
+    assert_eq!(
+        Nullification::from_nullifies(&committee, []),
         Err(EvidenceError::Empty)
     );
 }
@@ -196,6 +231,12 @@ fn evidence_rejects_duplicate_signers() {
 
     assert_eq!(
         MNotarization::from_votes(&committee, [vote(0, 10, 3), vote(1, 10, 3), vote(0, 10, 3)],),
+        Err(EvidenceError::DuplicateSigner {
+            signer: validator(0),
+        })
+    );
+    assert_eq!(
+        Nullification::from_nullifies(&committee, [nullify(0, 3), nullify(1, 3), nullify(0, 3)],),
         Err(EvidenceError::DuplicateSigner {
             signer: validator(0),
         })
@@ -215,6 +256,12 @@ fn evidence_rejects_unknown_signers() {
             signer: validator(99),
         })
     );
+    assert_eq!(
+        Nullification::from_nullifies(&committee, [nullify(0, 3), nullify(1, 3), nullify(99, 3)],),
+        Err(EvidenceError::UnknownSigner {
+            signer: validator(99),
+        })
+    );
 }
 
 #[test]
@@ -228,6 +275,19 @@ fn evidence_rejects_mixed_vote_targets() {
             expected_view: view(3),
             actual_block: block(11),
             actual_view: view(3),
+        })
+    );
+}
+
+#[test]
+fn evidence_rejects_mixed_nullification_views() {
+    let committee = committee();
+
+    assert_eq!(
+        Nullification::from_nullifies(&committee, [nullify(0, 3), nullify(1, 4), nullify(2, 3)],),
+        Err(EvidenceError::ConflictingNullificationView {
+            expected_view: view(3),
+            actual_view: view(4),
         })
     );
 }

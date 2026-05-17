@@ -660,6 +660,80 @@ impl LNotarization {
     }
 }
 
+/// Evidence that a view has the nullification threshold.
+///
+/// `Nullification` is constructed from nullify messages plus the active
+/// committee. Construction checks that every signer is a committee member, each
+/// signer appears once, all messages target the same view, and the number of
+/// distinct valid signers meets the `2f + 1` nullification threshold. Timeout,
+/// condition-b, and state-machine transition rules are checked outside this
+/// evidence type.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Nullification {
+    view: ViewNumber,
+    signers: BTreeSet<ValidatorId>,
+}
+
+impl Nullification {
+    /// Creates a nullification from nullify messages and the active committee.
+    ///
+    /// Returns [`EvidenceError`] when the message set is empty, includes a
+    /// non-member or duplicate signer, mixes target views, or has fewer than
+    /// `2f + 1` distinct valid signers.
+    pub fn from_nullifies<I>(committee: &Committee, nullifies: I) -> Result<Self, EvidenceError>
+    where
+        I: IntoIterator<Item = Nullify>,
+    {
+        let mut nullifies = nullifies.into_iter();
+        let first = nullifies.next().ok_or(EvidenceError::Empty)?;
+        let mut signers = BTreeSet::new();
+
+        let first_signer = first.signer();
+        if !committee.contains(first_signer) {
+            return Err(EvidenceError::UnknownSigner {
+                signer: first_signer,
+            });
+        }
+        signers.insert(first_signer);
+
+        for nullify in nullifies {
+            if nullify.view() != first.view() {
+                return Err(EvidenceError::ConflictingNullificationView {
+                    expected_view: first.view(),
+                    actual_view: nullify.view(),
+                });
+            }
+
+            let signer = nullify.signer();
+            if !committee.contains(signer) {
+                return Err(EvidenceError::UnknownSigner { signer });
+            }
+
+            if !signers.insert(signer) {
+                return Err(EvidenceError::DuplicateSigner { signer });
+            }
+        }
+
+        require_threshold(signers.len(), committee.config().nullification_threshold())?;
+
+        Ok(Self {
+            view: first.view(),
+            signers,
+        })
+    }
+
+    /// Returns the nullified view.
+    #[must_use]
+    pub fn view(&self) -> ViewNumber {
+        self.view
+    }
+
+    /// Iterates signer identities in deterministic order.
+    pub fn signers(&self) -> impl Iterator<Item = ValidatorId> + '_ {
+        self.signers.iter().copied()
+    }
+}
+
 /// Block construction errors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BlockError {
@@ -719,6 +793,13 @@ pub enum EvidenceError {
         /// Conflicting vote view.
         actual_view: ViewNumber,
     },
+    /// Nullify messages did not all target the same view.
+    ConflictingNullificationView {
+        /// Expected view from the first nullify message.
+        expected_view: ViewNumber,
+        /// Conflicting nullify view.
+        actual_view: ViewNumber,
+    },
     /// The evidence had fewer distinct valid signers than required.
     BelowThreshold {
         /// Number of distinct valid signers.
@@ -746,6 +827,13 @@ impl fmt::Display for EvidenceError {
             } => write!(
                 formatter,
                 "vote targets {actual_block} in {actual_view}, expected {expected_block} in {expected_view}"
+            ),
+            Self::ConflictingNullificationView {
+                expected_view,
+                actual_view,
+            } => write!(
+                formatter,
+                "nullify message targets {actual_view}, expected {expected_view}"
             ),
             Self::BelowThreshold {
                 signer_count,
