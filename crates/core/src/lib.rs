@@ -306,6 +306,22 @@ impl Committee {
         self.validators.iter().copied()
     }
 
+    /// Returns the deterministic leader for `view`.
+    ///
+    /// The paper defines `lead(v)` by indexing processors modulo `n`. The core
+    /// uses committee identity order as the deterministic processor order.
+    #[must_use]
+    pub fn leader(&self, view: ViewNumber) -> ValidatorId {
+        let validator_count = self.validators.len() as u64;
+        let leader_index = (view.get() % validator_count) as usize;
+
+        self.validators
+            .iter()
+            .copied()
+            .nth(leader_index)
+            .expect("validated committees are non-empty")
+    }
+
     /// Counts distinct senders that are members of this committee.
     ///
     /// Duplicate senders count once and non-members do not contribute.
@@ -425,6 +441,37 @@ impl Block {
     #[must_use]
     pub fn transactions(&self) -> &[TransactionId] {
         &self.transactions
+    }
+}
+
+/// Modeled signed block proposal input.
+///
+/// Real cryptographic verification stays outside the core crate. This type
+/// records the identity that authenticated a block so later pure proposal
+/// validity rules can check whether the signer is the view leader.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SignedBlock {
+    signer: ValidatorId,
+    block: Block,
+}
+
+impl SignedBlock {
+    /// Creates a signed block input.
+    #[must_use]
+    pub fn new(signer: ValidatorId, block: Block) -> Self {
+        Self { signer, block }
+    }
+
+    /// Returns the validator identity that signed the block.
+    #[must_use]
+    pub fn signer(&self) -> ValidatorId {
+        self.signer
+    }
+
+    /// Returns the signed block.
+    #[must_use]
+    pub fn block(&self) -> &Block {
+        &self.block
     }
 }
 
