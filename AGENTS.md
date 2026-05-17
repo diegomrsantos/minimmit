@@ -55,5 +55,12 @@ literal, and easy to audit.
 - Keep public APIs clear and narrow.
 - Avoid unused placeholders.
 - Use deterministic data structures when observable ordering matters.
+- Use the repo-scoped `minimmit-rust-quality` skill when creating or modifying
+  Rust implementation code.
+- Use the repo-scoped `minimmit-invariant-review` skill when changing
+  constructors, state transitions, protocol-facing types, validation, or
+  trusted assumptions.
+- Use the repo-scoped `minimmit-test-quality` skill when adding or modifying
+  tests, test helpers, or regression coverage.
 - Use the repo-scoped `minimmit-doc-quality` skill when creating or modifying
   Rust code, public APIs, protocol-facing types, tests, or non-obvious helpers.

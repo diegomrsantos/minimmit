@@ -1,0 +1,6 @@
+interface:
+  display_name: "Minimmit Rust Quality"
+  short_description: "Idiomatic, deterministic Rust for Minimmit"
+  default_prompt: "Use $minimmit-rust-quality when creating, modifying, or reviewing Rust implementation code in Minimmit."
+policy:
+  allow_implicit_invocation: true
