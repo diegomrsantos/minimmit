@@ -17,6 +17,9 @@ literal, and easy to audit.
 - One pull request must cover one concern.
 - Do not mix docs, refactors, protocol behavior, test infrastructure, CI, or
   formatting unless one change truly depends on the other.
+- Before opening a pull request, after implementation and local verification,
+  spawn a fresh review agent to review the implementation. Address any
+  actionable findings, or record why they are deferred, before creating the PR.
 - When creating or refining issues, follow `docs/issues.md`; use issue
   templates as forms, not as the canonical policy.
 - When creating or refining milestones, follow `docs/milestones.md`.
