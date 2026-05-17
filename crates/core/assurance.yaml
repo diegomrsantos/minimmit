@@ -111,10 +111,12 @@ claims:
     source_anchor:
       sections: ["The formal specification"]
       anchors: ["M-notarisations", "L-notarisations", "Nullifications"]
-    status: in_progress
+    status: evidenced
     evidence:
       - kind: rust_test
         artifact: crates/core/tests/validator_senders.rs
+      - kind: rust_test
+        artifact: crates/core/tests/baseline_types.rs
   MM-PARENT-SELECTION:
     claim: "SelectParent(S, v) returns a block from the greatest prior view with an M-notarization, breaking ties by lexicographically least block."
     source_anchor:
