@@ -1,4 +1,4 @@
-use minimmit_core::{BlockId, TransactionId, ViewNumber};
+use minimmit_core::{Block, BlockError, BlockId, TransactionId, ViewNumber};
 
 fn block(id: u64) -> BlockId {
     BlockId::new(id)
@@ -28,5 +28,46 @@ fn ids_sort_deterministically() {
     assert_eq!(
         transactions,
         [transaction(10), transaction(11), transaction(12)]
+    );
+}
+
+#[test]
+fn block_preserves_parent_and_transaction_order() {
+    let built = Block::new(
+        block(10),
+        view(2),
+        block(5),
+        [transaction(3), transaction(1)],
+    )
+    .expect("transactions are distinct");
+
+    assert_eq!(built.id(), block(10));
+    assert_eq!(built.view(), view(2));
+    assert_eq!(built.parent(), Some(block(5)));
+    assert_eq!(built.transactions(), &[transaction(3), transaction(1)]);
+}
+
+#[test]
+fn genesis_block_has_no_parent_or_transactions() {
+    let genesis = Block::genesis(block(0));
+
+    assert_eq!(genesis.id(), block(0));
+    assert_eq!(genesis.view(), view(0));
+    assert_eq!(genesis.parent(), None);
+    assert!(genesis.transactions().is_empty());
+}
+
+#[test]
+fn block_rejects_duplicate_transactions() {
+    assert_eq!(
+        Block::new(
+            block(10),
+            view(2),
+            block(5),
+            [transaction(3), transaction(1), transaction(3)],
+        ),
+        Err(BlockError::DuplicateTransaction {
+            transaction: transaction(3),
+        })
     );
 }
