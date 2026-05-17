@@ -575,6 +575,44 @@ impl LNotarization {
     }
 }
 
+/// Nullification backed by threshold nullify evidence.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Nullification {
+    view: ViewNumber,
+    signers: BTreeSet<ValidatorId>,
+}
+
+impl Nullification {
+    /// Creates a nullification from nullify messages with `2f + 1` distinct
+    /// valid signers for one view.
+    pub fn from_nullifies<I>(committee: &Committee, nullifies: I) -> Result<Self, EvidenceError>
+    where
+        I: IntoIterator<Item = Nullify>,
+    {
+        let evidence = validate_nullifies(
+            committee,
+            nullifies,
+            committee.config().nullification_threshold(),
+        )?;
+
+        Ok(Self {
+            view: evidence.view,
+            signers: evidence.signers,
+        })
+    }
+
+    /// Returns the nullified view.
+    #[must_use]
+    pub fn view(&self) -> ViewNumber {
+        self.view
+    }
+
+    /// Iterates signer identities in deterministic order.
+    pub fn signers(&self) -> impl Iterator<Item = ValidatorId> + '_ {
+        self.signers.iter().copied()
+    }
+}
+
 /// Evidence validation errors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EvidenceError {
@@ -599,6 +637,13 @@ pub enum EvidenceError {
         /// Conflicting vote block.
         actual_block: BlockId,
         /// Conflicting vote view.
+        actual_view: ViewNumber,
+    },
+    /// Nullify messages did not all target the same view.
+    ConflictingNullificationView {
+        /// Expected view from the first nullify message.
+        expected_view: ViewNumber,
+        /// Conflicting nullify view.
         actual_view: ViewNumber,
     },
     /// The evidence had fewer distinct valid signers than required.
@@ -629,6 +674,13 @@ impl fmt::Display for EvidenceError {
                 formatter,
                 "vote targets {actual_block} in {actual_view}, expected {expected_block} in {expected_view}"
             ),
+            Self::ConflictingNullificationView {
+                expected_view,
+                actual_view,
+            } => write!(
+                formatter,
+                "nullify message targets {actual_view}, expected {expected_view}"
+            ),
             Self::BelowThreshold {
                 signer_count,
                 threshold,
@@ -644,6 +696,11 @@ impl std::error::Error for EvidenceError {}
 
 struct VoteEvidence {
     block: BlockId,
+    view: ViewNumber,
+    signers: BTreeSet<ValidatorId>,
+}
+
+struct NullificationEvidence {
     view: ViewNumber,
     signers: BTreeSet<ValidatorId>,
 }
@@ -697,6 +754,39 @@ where
 
     Ok(VoteEvidence {
         block: first.block(),
+        view: first.view(),
+        signers,
+    })
+}
+
+fn validate_nullifies<I>(
+    committee: &Committee,
+    nullifies: I,
+    threshold: usize,
+) -> Result<NullificationEvidence, EvidenceError>
+where
+    I: IntoIterator<Item = Nullify>,
+{
+    let mut nullifies = nullifies.into_iter();
+    let first = nullifies.next().ok_or(EvidenceError::Empty)?;
+    let mut signers = BTreeSet::new();
+
+    insert_signer(committee, &mut signers, first.signer())?;
+
+    for nullify in nullifies {
+        if nullify.view() != first.view() {
+            return Err(EvidenceError::ConflictingNullificationView {
+                expected_view: first.view(),
+                actual_view: nullify.view(),
+            });
+        }
+
+        insert_signer(committee, &mut signers, nullify.signer())?;
+    }
+
+    require_threshold(signers.len(), threshold)?;
+
+    Ok(NullificationEvidence {
         view: first.view(),
         signers,
     })
