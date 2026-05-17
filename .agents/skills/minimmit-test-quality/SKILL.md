@@ -30,6 +30,42 @@ test quality; it does not decide whether a protocol claim is evidenced.
   dependencies unless they are explicitly controlled by the test.
 - Avoid tests that merely mirror private implementation structure.
 
+## Test Implementation Shape
+
+- Prefer one behavior per test. Split grouped checks when failures would point
+  to different rules, errors, or protocol facts.
+- Make the setup, action, and assertion visible in the test body.
+- Keep important inputs literal at the call site: validators, views, blocks,
+  votes, nullifications, and expected errors should be easy to see.
+- Prefer explicit expected values over recomputing them with test logic.
+- Avoid loops, conditionals, clever builders, or broad table fixtures unless
+  they make the tested behavior clearer.
+- Prefer DAMP test code over DRY test code when duplication makes the behavior
+  easier to audit.
+- Do not add test framework, assertion, fixture, property-test, or table-test
+  dependencies unless the task explicitly justifies the review cost.
+
+## Helper Rules
+
+- Use helpers for boring valid construction and repeated scalar wrappers.
+- Do not let helpers hide the protocol fact or edge case under test.
+- Name helpers by domain meaning, not mechanics, such as `m_notarization` or
+  `view_5_nullification`.
+- Keep helper parameters behavior-specific and visible. Avoid generic builders
+  that require readers to inspect defaults before trusting the test.
+- Keep helpers local to the test file until more than one file needs the same
+  behavior shape.
+
+## Existing Test Refactor Pass
+
+When touching existing tests, make the local implementation easier to read:
+
+- Rename unclear tests to state the behavior they prove.
+- Split broad tests that combine unrelated success and failure paths.
+- Extract only the fixture construction that distracts from the assertion.
+- Keep assertion output actionable without requiring a debugger or large trace.
+- Preserve current coverage unless the task explicitly removes or replaces it.
+
 ## Coverage Pass
 
 Before finishing test changes, check relevant cases:
