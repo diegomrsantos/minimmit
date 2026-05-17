@@ -519,43 +519,12 @@ impl MNotarization {
     where
         I: IntoIterator<Item = Vote>,
     {
-        let mut votes = votes.into_iter();
-        let first = votes.next().ok_or(EvidenceError::Empty)?;
-        let mut signers = BTreeSet::new();
-
-        let first_signer = first.signer();
-        if !committee.contains(first_signer) {
-            return Err(EvidenceError::UnknownSigner {
-                signer: first_signer,
-            });
-        }
-        signers.insert(first_signer);
-
-        for vote in votes {
-            if vote.block() != first.block() || vote.view() != first.view() {
-                return Err(EvidenceError::ConflictingVoteTarget {
-                    expected_block: first.block(),
-                    expected_view: first.view(),
-                    actual_block: vote.block(),
-                    actual_view: vote.view(),
-                });
-            }
-
-            let signer = vote.signer();
-            if !committee.contains(signer) {
-                return Err(EvidenceError::UnknownSigner { signer });
-            }
-
-            if !signers.insert(signer) {
-                return Err(EvidenceError::DuplicateSigner { signer });
-            }
-        }
-
-        require_threshold(signers.len(), committee.config().m_threshold())?;
+        let ((block, view), signers) =
+            collect_evidence(committee, votes, committee.config().m_threshold())?;
 
         Ok(Self {
-            block: first.block(),
-            view: first.view(),
+            block,
+            view,
             signers,
         })
     }
@@ -601,43 +570,12 @@ impl LNotarization {
     where
         I: IntoIterator<Item = Vote>,
     {
-        let mut votes = votes.into_iter();
-        let first = votes.next().ok_or(EvidenceError::Empty)?;
-        let mut signers = BTreeSet::new();
-
-        let first_signer = first.signer();
-        if !committee.contains(first_signer) {
-            return Err(EvidenceError::UnknownSigner {
-                signer: first_signer,
-            });
-        }
-        signers.insert(first_signer);
-
-        for vote in votes {
-            if vote.block() != first.block() || vote.view() != first.view() {
-                return Err(EvidenceError::ConflictingVoteTarget {
-                    expected_block: first.block(),
-                    expected_view: first.view(),
-                    actual_block: vote.block(),
-                    actual_view: vote.view(),
-                });
-            }
-
-            let signer = vote.signer();
-            if !committee.contains(signer) {
-                return Err(EvidenceError::UnknownSigner { signer });
-            }
-
-            if !signers.insert(signer) {
-                return Err(EvidenceError::DuplicateSigner { signer });
-            }
-        }
-
-        require_threshold(signers.len(), committee.config().l_threshold())?;
+        let ((block, view), signers) =
+            collect_evidence(committee, votes, committee.config().l_threshold())?;
 
         Ok(Self {
-            block: first.block(),
-            view: first.view(),
+            block,
+            view,
             signers,
         })
     }
@@ -684,42 +622,13 @@ impl Nullification {
     where
         I: IntoIterator<Item = Nullify>,
     {
-        let mut nullifies = nullifies.into_iter();
-        let first = nullifies.next().ok_or(EvidenceError::Empty)?;
-        let mut signers = BTreeSet::new();
+        let (view, signers) = collect_evidence(
+            committee,
+            nullifies,
+            committee.config().nullification_threshold(),
+        )?;
 
-        let first_signer = first.signer();
-        if !committee.contains(first_signer) {
-            return Err(EvidenceError::UnknownSigner {
-                signer: first_signer,
-            });
-        }
-        signers.insert(first_signer);
-
-        for nullify in nullifies {
-            if nullify.view() != first.view() {
-                return Err(EvidenceError::ConflictingNullificationView {
-                    expected_view: first.view(),
-                    actual_view: nullify.view(),
-                });
-            }
-
-            let signer = nullify.signer();
-            if !committee.contains(signer) {
-                return Err(EvidenceError::UnknownSigner { signer });
-            }
-
-            if !signers.insert(signer) {
-                return Err(EvidenceError::DuplicateSigner { signer });
-            }
-        }
-
-        require_threshold(signers.len(), committee.config().nullification_threshold())?;
-
-        Ok(Self {
-            view: first.view(),
-            signers,
-        })
+        Ok(Self { view, signers })
     }
 
     /// Returns the nullified view.
@@ -848,6 +757,61 @@ impl fmt::Display for EvidenceError {
 
 impl std::error::Error for EvidenceError {}
 
+/// Message type that can contribute to threshold evidence.
+trait EvidenceMessage {
+    /// Target all messages in one evidence value must agree on.
+    type Target: Copy + Eq;
+
+    /// Returns the signer identity carried by the message.
+    fn signer(&self) -> ValidatorId;
+
+    /// Returns the message target.
+    fn target(&self) -> Self::Target;
+
+    /// Builds the target-conflict error for this message kind.
+    fn conflicting_target_error(expected: Self::Target, actual: Self::Target) -> EvidenceError;
+}
+
+impl EvidenceMessage for Vote {
+    type Target = (BlockId, ViewNumber);
+
+    fn signer(&self) -> ValidatorId {
+        self.signer
+    }
+
+    fn target(&self) -> Self::Target {
+        (self.block, self.view)
+    }
+
+    fn conflicting_target_error(expected: Self::Target, actual: Self::Target) -> EvidenceError {
+        EvidenceError::ConflictingVoteTarget {
+            expected_block: expected.0,
+            expected_view: expected.1,
+            actual_block: actual.0,
+            actual_view: actual.1,
+        }
+    }
+}
+
+impl EvidenceMessage for Nullify {
+    type Target = ViewNumber;
+
+    fn signer(&self) -> ValidatorId {
+        self.signer
+    }
+
+    fn target(&self) -> Self::Target {
+        self.view
+    }
+
+    fn conflicting_target_error(expected: Self::Target, actual: Self::Target) -> EvidenceError {
+        EvidenceError::ConflictingNullificationView {
+            expected_view: expected,
+            actual_view: actual,
+        }
+    }
+}
+
 fn distinct_transactions<I>(transactions: I) -> Result<Vec<TransactionId>, BlockError>
 where
     I: IntoIterator<Item = TransactionId>,
@@ -866,16 +830,45 @@ where
     Ok(transaction_list)
 }
 
-/// Requires an evidence signer count to meet the requested threshold.
-fn require_threshold(signer_count: usize, threshold: usize) -> Result<(), EvidenceError> {
-    if signer_count < threshold {
+/// Collects one-target threshold evidence from modeled messages.
+fn collect_evidence<I, M>(
+    committee: &Committee,
+    messages: I,
+    threshold: usize,
+) -> Result<(M::Target, BTreeSet<ValidatorId>), EvidenceError>
+where
+    I: IntoIterator<Item = M>,
+    M: EvidenceMessage,
+{
+    let mut messages = messages.into_iter();
+    let first = messages.next().ok_or(EvidenceError::Empty)?;
+    let target = first.target();
+    let mut signers = BTreeSet::new();
+
+    for message in std::iter::once(first).chain(messages) {
+        let actual_target = message.target();
+        if actual_target != target {
+            return Err(M::conflicting_target_error(target, actual_target));
+        }
+
+        let signer = message.signer();
+        if !committee.contains(signer) {
+            return Err(EvidenceError::UnknownSigner { signer });
+        }
+
+        if !signers.insert(signer) {
+            return Err(EvidenceError::DuplicateSigner { signer });
+        }
+    }
+
+    if signers.len() < threshold {
         return Err(EvidenceError::BelowThreshold {
-            signer_count,
+            signer_count: signers.len(),
             threshold,
         });
     }
 
-    Ok(())
+    Ok((target, signers))
 }
 
 fn minimum_validator_count(fault_bound: usize) -> Result<usize, ConfigError> {
