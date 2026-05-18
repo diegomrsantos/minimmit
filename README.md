@@ -56,12 +56,12 @@ The intended direction is a small core shaped around explicit inputs and
 outputs:
 
 ```text
-Event -> Core -> Ready
+Event -> Processor -> Ready
 ```
 
-`Event` is what the protocol observes, `Core` is the deterministic state machine
-that applies the protocol rules, and `Ready` is what an outer runtime should do
-next.
+`Event` is what the protocol observes, `Processor` is the local deterministic
+state machine that applies the protocol rules for one validator identity, and
+`Ready` is what an outer runtime should do next.
 
 Assurance guidance is documented under `docs/assurance/`; the core crate ledger
 lives at `crates/core/assurance.yaml`. Dependency policy is documented in

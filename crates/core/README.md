@@ -17,9 +17,9 @@ This crate should not contain:
 The intended future shape is:
 
 ```text
-Event -> Core -> Ready
+Event -> Processor -> Ready
 ```
 
-`Event` represents deterministic input, `Core` owns protocol state and applies
-the transition, and `Ready` describes deterministic outputs for an outer shell to
-perform.
+`Event` represents deterministic input, `Processor` owns local protocol state
+for one validator identity and applies the transition, and `Ready` describes
+deterministic outputs for an outer shell to perform.
