@@ -1,16 +1,10 @@
-use minimmit_core::{Committee, CommitteeError, ConfigError, ValidatorId};
+mod common;
 
-const ONE_FAULT: usize = 1;
-const MIN_VALIDATORS_WITH_ONE_FAULT: u64 = 6;
-const BELOW_MIN_VALIDATORS_WITH_ONE_FAULT: u64 = 5;
-
-fn validator(id: u64) -> ValidatorId {
-    ValidatorId::new(id)
-}
-
-fn validators(count: u64) -> Vec<ValidatorId> {
-    (0..count).map(validator).collect()
-}
+use common::{
+    committee, validator, validators, BELOW_MIN_VALIDATORS_WITH_ONE_FAULT,
+    MIN_VALIDATORS_WITH_ONE_FAULT, ONE_FAULT,
+};
+use minimmit_core::{Committee, CommitteeError, ConfigError};
 
 #[test]
 fn committee_rejects_duplicate_validators() {
@@ -62,8 +56,7 @@ fn committee_iterates_validators_in_identity_order() {
 
 #[test]
 fn duplicate_senders_count_once() {
-    let committee = Committee::new(validators(MIN_VALIDATORS_WITH_ONE_FAULT), ONE_FAULT)
-        .expect("committee satisfies n >= 5f + 1");
+    let committee = committee();
 
     let count = committee.count_distinct_valid_senders([
         validator(0),
@@ -77,8 +70,7 @@ fn duplicate_senders_count_once() {
 
 #[test]
 fn unknown_senders_do_not_count() {
-    let committee = Committee::new(validators(MIN_VALIDATORS_WITH_ONE_FAULT), ONE_FAULT)
-        .expect("committee satisfies n >= 5f + 1");
+    let committee = committee();
 
     let count = committee.count_distinct_valid_senders([validator(0), validator(1), validator(99)]);
 
@@ -87,8 +79,7 @@ fn unknown_senders_do_not_count() {
 
 #[test]
 fn exact_threshold_requires_distinct_valid_senders() {
-    let committee = Committee::new(validators(MIN_VALIDATORS_WITH_ONE_FAULT), ONE_FAULT)
-        .expect("committee satisfies n >= 5f + 1");
+    let committee = committee();
 
     let below_threshold = committee.count_distinct_valid_senders([validator(0), validator(1)]);
     let at_threshold =
@@ -100,8 +91,7 @@ fn exact_threshold_requires_distinct_valid_senders() {
 
 #[test]
 fn mixed_valid_invalid_and_duplicate_senders_count_only_distinct_members() {
-    let committee = Committee::new(validators(MIN_VALIDATORS_WITH_ONE_FAULT), ONE_FAULT)
-        .expect("committee satisfies n >= 5f + 1");
+    let committee = committee();
 
     let count = committee.count_distinct_valid_senders([
         validator(0),

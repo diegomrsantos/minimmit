@@ -1,43 +1,12 @@
-use minimmit_core::{
-    Block, BlockError, BlockId, Committee, EvidenceError, LNotarization, MNotarization,
-    Nullification, Nullify, Proposal, ProposalError, TransactionId, ValidatorId, ViewNumber, Vote,
+mod common;
+
+use common::{
+    block, committee, m_notarization, nullification, nullify, transaction, validator, view, vote,
 };
-
-const ONE_FAULT: usize = 1;
-const MIN_VALIDATORS_WITH_ONE_FAULT: u64 = 6;
-
-fn block(id: u64) -> BlockId {
-    BlockId::new(id)
-}
-
-fn committee() -> Committee {
-    Committee::new(validators(MIN_VALIDATORS_WITH_ONE_FAULT), ONE_FAULT)
-        .expect("committee satisfies n >= 5f + 1")
-}
-
-fn transaction(id: u64) -> TransactionId {
-    TransactionId::new(id)
-}
-
-fn validator(id: u64) -> ValidatorId {
-    ValidatorId::new(id)
-}
-
-fn validators(count: u64) -> Vec<ValidatorId> {
-    (0..count).map(validator).collect()
-}
-
-fn view(number: u64) -> ViewNumber {
-    ViewNumber::new(number)
-}
-
-fn vote(signer: u64, block_id: u64, view_number: u64) -> Vote {
-    Vote::new(validator(signer), block(block_id), view(view_number))
-}
-
-fn nullify(signer: u64, view_number: u64) -> Nullify {
-    Nullify::new(validator(signer), view(view_number))
-}
+use minimmit_core::{
+    Block, BlockError, EvidenceError, LNotarization, MNotarization, Nullification, Nullify,
+    Proposal, ProposalError, Vote,
+};
 
 #[test]
 fn identifiers_order_by_inner_value() {
@@ -294,16 +263,9 @@ fn evidence_rejects_mixed_nullification_views() {
 
 #[test]
 fn proposal_preserves_fields_and_orders_nullifications_by_view() {
-    let committee = committee();
-    let parent_notarization =
-        MNotarization::from_votes(&committee, [vote(0, 10, 3), vote(1, 10, 3), vote(2, 10, 3)])
-            .expect("parent has M-notarization evidence");
-    let skipped_view_5 =
-        Nullification::from_nullifies(&committee, [nullify(0, 5), nullify(1, 5), nullify(2, 5)])
-            .expect("view 5 is nullified");
-    let skipped_view_4 =
-        Nullification::from_nullifies(&committee, [nullify(0, 4), nullify(1, 4), nullify(2, 4)])
-            .expect("view 4 is nullified");
+    let parent_notarization = m_notarization(10, 3);
+    let skipped_view_5 = nullification(5);
+    let skipped_view_4 = nullification(4);
     let proposed_block =
         Block::new(block(12), view(6), block(10), [transaction(1)]).expect("block is valid");
 
@@ -329,15 +291,10 @@ fn proposal_preserves_fields_and_orders_nullifications_by_view() {
 
 #[test]
 fn proposal_rejects_duplicate_nullification_views() {
-    let committee = committee();
-    let parent_notarization =
-        MNotarization::from_votes(&committee, [vote(0, 10, 3), vote(1, 10, 3), vote(2, 10, 3)])
-            .expect("parent has M-notarization evidence");
-    let first =
-        Nullification::from_nullifies(&committee, [nullify(0, 5), nullify(1, 5), nullify(2, 5)])
-            .expect("view 5 is nullified");
+    let parent_notarization = m_notarization(10, 3);
+    let first = nullification(5);
     let second =
-        Nullification::from_nullifies(&committee, [nullify(3, 5), nullify(4, 5), nullify(5, 5)])
+        Nullification::from_nullifies(&committee(), [nullify(3, 5), nullify(4, 5), nullify(5, 5)])
             .expect("view 5 is nullified");
     let proposed_block =
         Block::new(block(12), view(6), block(10), [transaction(1)]).expect("block is valid");
