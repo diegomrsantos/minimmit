@@ -1,24 +1,7 @@
-use minimmit_core::{
-    Block, BlockId, Committee, SignedBlock, TransactionId, ValidatorId, ViewNumber,
-};
+mod common;
 
-const ONE_FAULT: usize = 1;
-
-fn block(id: u64) -> BlockId {
-    BlockId::new(id)
-}
-
-fn transaction(id: u64) -> TransactionId {
-    TransactionId::new(id)
-}
-
-fn validator(id: u64) -> ValidatorId {
-    ValidatorId::new(id)
-}
-
-fn view(number: u64) -> ViewNumber {
-    ViewNumber::new(number)
-}
+use common::{block, transaction, validator, view, ONE_FAULT};
+use minimmit_core::{Block, Committee, SignedBlock};
 
 #[test]
 fn leader_uses_view_modulo_validator_identity_order() {
