@@ -114,7 +114,7 @@ claims:
     status: in_progress
     evidence:
       - kind: rust_test
-        artifact: crates/core/tests/validator_senders.rs
+        artifact: crates/core/src/committee.rs
   MM-PARENT-SELECTION:
     claim: "SelectParent(S, v) returns a block from the greatest prior view with an M-notarization, breaking ties by lexicographically least block."
     source_anchor:
