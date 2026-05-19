@@ -1,0 +1,6 @@
+interface:
+  display_name: "Minimmit Acceptance Evals"
+  short_description: "Acceptance criteria for risky Minimmit work"
+  default_prompt: "Use $minimmit-acceptance-evals to define acceptance checks before implementing a risky Minimmit change."
+policy:
+  allow_implicit_invocation: true
