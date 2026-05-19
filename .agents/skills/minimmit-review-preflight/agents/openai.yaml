@@ -1,0 +1,6 @@
+interface:
+  display_name: "Minimmit Review Preflight"
+  short_description: "Scope and evidence preflight for reviews"
+  default_prompt: "Use $minimmit-review-preflight to check a Minimmit diff for scope, evidence, and verification risks."
+policy:
+  allow_implicit_invocation: true
