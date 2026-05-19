@@ -105,7 +105,7 @@ claims:
     status: evidenced
     evidence:
       - kind: rust_test
-        artifact: crates/core/tests/thresholds.rs
+        artifact: crates/core/src/config.rs
   MM-DISTINCT-VALID-SENDERS:
     claim: "Votes and nullify messages count only distinct valid processors from the validator set."
     source_anchor:
