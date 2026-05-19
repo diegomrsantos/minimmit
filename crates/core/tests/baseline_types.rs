@@ -4,28 +4,9 @@ use common::{
     block, committee, m_notarization, nullification, nullify, transaction, validator, view, vote,
 };
 use minimmit_core::{
-    Block, BlockError, EvidenceError, LNotarization, MNotarization, Nullification, Nullify,
-    Proposal, ProposalError, Vote,
+    Block, BlockError, EvidenceError, LNotarization, MNotarization, Nullification, Proposal,
+    ProposalError,
 };
-
-#[test]
-fn identifiers_order_by_inner_value() {
-    let mut views = [view(2), view(0), view(1)];
-    views.sort();
-
-    let mut blocks = [block(7), block(3), block(5)];
-    blocks.sort();
-
-    let mut transactions = [transaction(11), transaction(10), transaction(12)];
-    transactions.sort();
-
-    assert_eq!(views, [view(0), view(1), view(2)]);
-    assert_eq!(blocks, [block(3), block(5), block(7)]);
-    assert_eq!(
-        transactions,
-        [transaction(10), transaction(11), transaction(12)]
-    );
-}
 
 #[test]
 fn block_preserves_parent_and_transaction_order() {
@@ -64,23 +45,6 @@ fn block_rejects_duplicate_transactions() {
             transaction: transaction(3),
         })
     );
-}
-
-#[test]
-fn vote_records_signer_block_and_view() {
-    let vote = Vote::new(validator(2), block(10), view(3));
-
-    assert_eq!(vote.signer(), validator(2));
-    assert_eq!(vote.block(), block(10));
-    assert_eq!(vote.view(), view(3));
-}
-
-#[test]
-fn nullify_records_signer_and_view() {
-    let nullify = Nullify::new(validator(2), view(3));
-
-    assert_eq!(nullify.signer(), validator(2));
-    assert_eq!(nullify.view(), view(3));
 }
 
 #[test]

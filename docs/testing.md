@@ -20,6 +20,12 @@ Use the smallest deterministic test that gives useful confidence. For current
 values. Once the deterministic core exposes an event boundary, protocol
 scenario tests should drive that boundary directly.
 
+Each test should protect behavior that Minimmit owns: protocol obligations,
+project policy, validation, state transitions, or observable semantic output.
+Do not add, move, or preserve tests whose failure would primarily report a
+change in language, library, dependency, derived, or otherwise mechanical
+behavior rather than a change in Minimmit behavior.
+
 ## Test Layers
 
 - Small claim tests are the default. They cover thresholds, typed
@@ -95,6 +101,8 @@ evidence unless the trace drives Rust behavior.
   shell behavior.
 - Prefer behavior tests through public APIs and protocol-facing outputs.
 - Keep tests readable and actionable from the test name plus assertion output.
+- Remove mechanical coverage instead of relocating it when cleanup scope
+  permits.
 - Let `crates/core/assurance.yaml` drive protocol test priority.
 - Treat model-only checks as design evidence unless they are connected to Rust
   behavior.
