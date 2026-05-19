@@ -66,6 +66,9 @@ assured groundwork for later core behavior.
 - it exposes a usable deterministic `Event -> Core -> Ready` state machine
 - it supports a meaningful baseline protocol slice
 - docs explain supported and unsupported behavior
+- docs define whether hard outputs require lifecycle completion before
+  dependent protocol outputs; see
+  [Core And Shell Lifecycle](core-shell-lifecycle.md)
 - assurance entries for the supported slice are current
 - `cargo test` passes from a clean checkout
 

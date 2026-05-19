@@ -12,13 +12,19 @@ not carry testing roadmaps, source surveys, or confidence essays.
 The preferred Minimmit testing loop is:
 
 ```text
-paper claim -> explicit event -> core step -> semantic effect -> trace/replay -> evidence
+paper claim -> explicit input -> core step -> semantic effect -> trace/replay -> evidence
 ```
 
 Use the smallest deterministic test that gives useful confidence. For current
 `minimmit-core` work, this usually means pure Rust tests over typed protocol
 values. Once the deterministic core exposes an event boundary, protocol
 scenario tests should drive that boundary directly.
+
+When a core output depends on shell work becoming durable, tests should model
+that progress as an explicit lifecycle input. Do not let tests assume that a
+storage command completed unless the scenario feeds the corresponding
+completion event back into the core. See
+[Core And Shell Lifecycle](core-shell-lifecycle.md) for the lifecycle boundary.
 
 Each test should protect behavior that Minimmit owns: protocol obligations,
 project policy, validation, state transitions, or observable semantic output.
@@ -36,8 +42,8 @@ wrapping them in test-only helpers.
 - Small claim tests are the default. They cover thresholds, typed
   construction, duplicate rejection, distinct sender counting, deterministic
   ordering, and precise errors.
-- Event-step tests should drive one explicit protocol event through the core
-  and inspect the returned protocol-visible output.
+- Event-step tests should drive one explicit protocol or lifecycle event
+  through the core and inspect the returned protocol-visible output.
 - Scenario tests should feed a short event sequence, record step outcomes, and
   assert a named protocol story.
 - Replay fixtures should be added only after scenario shape stabilizes. A
@@ -104,6 +110,10 @@ evidence unless the trace drives Rust behavior.
 - Keep `minimmit-core` deterministic and free of hidden IO, wall-clock time,
   randomness, async scheduling, networking, storage engines, and production
   shell behavior.
+- Represent shell durability completion as explicit input when a protocol
+  output depends on it.
+- Assert durability-gated behavior through protocol-visible outputs, not DB
+  mechanics or shell queues.
 - Prefer behavior tests through public APIs and protocol-facing outputs.
 - Keep tests readable and actionable from the test name plus assertion output.
 - Remove mechanical coverage instead of relocating it when cleanup scope
@@ -171,6 +181,12 @@ Private protocol-event research:
 - [proto-core-lab composed submachines](https://github.com/diegomrsantos/proto-core-lab/blob/main/docs/decisions/0004-composed-deterministic-submachines.md):
   split complex protocol cores into deterministic submachines with typed
   internal event flow only when the concern is real.
+- [proto-core-lab explicit output lifecycle](https://github.com/diegomrsantos/proto-core-lab/blob/main/docs/decisions/0006-explicit-output-lifecycle.md):
+  represent shell work completion explicitly instead of hiding output
+  lifecycle state inside the core.
+- [proto-core-lab deterministic cores and shells](https://github.com/diegomrsantos/proto-core-lab/blob/main/docs/decisions/0007-framework-direction-deterministic-cores-and-shells.md):
+  keep core semantics deterministic while shells execute and acknowledge hard
+  outputs such as persistence.
 - [proto-core-lab Quint boundary](https://github.com/diegomrsantos/proto-core-lab/blob/main/docs/quint-connect-boundary.md):
   keep protocol-specific Quint replay mappings local until more than one
   protocol proves the abstraction.
