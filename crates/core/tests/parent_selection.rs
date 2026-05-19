@@ -1,3 +1,4 @@
+#[path = "common/parent_selection.rs"]
 mod common;
 
 use common::{block, m_notarization, view};

@@ -1,3 +1,4 @@
+#[path = "common/proposal_validity.rs"]
 mod common;
 
 use common::{
