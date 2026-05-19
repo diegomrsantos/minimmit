@@ -23,6 +23,12 @@ Keep the protocol core deterministic and reviewable. Runtime concerns such as
 networking, storage engines, wall-clock timers, and production orchestration
 belong outside `minimmit-core`.
 
+When core behavior depends on shell work becoming durable, model that as an
+explicit lifecycle input. The core may emit batch-correlated hard outputs such
+as persistence requests, but the shell owns DB execution and reports completion
+back through the deterministic event boundary. See
+[Core And Shell Lifecycle](core-shell-lifecycle.md) for the canonical boundary.
+
 ## Milestones
 
 ### baseline-core-v0
@@ -85,6 +91,10 @@ deterministic state machine.
 Includes:
 
 - `Processor`, `Event`, and `Ready`
+- batch identifiers for correlating hard outputs with lifecycle completion
+- minimal lifecycle input for durability completion, such as persisted ready
+  batch acknowledgement
+- documented hard-output contract for persistence-gated protocol behavior
 - local view state
 - observed protocol artifacts
 - deterministic ready outputs
@@ -100,6 +110,8 @@ Excludes:
 
 - durable snapshots
 - restart persistence
+- database-backed persistence
+- shell-side durability policy
 - real network messages
 - wall-clock scheduling
 - sync or fetch policy
@@ -126,6 +138,8 @@ Includes:
 - deterministic handling of multiple M-notarized blocks in one view
 - consistency-related regressions
 - view progression evidence
+- durability-sensitive behavior, such as persist-before-dependent-output paths,
+  driven through explicit lifecycle input
 - explicit liveness evidence gaps where executable evidence is not yet present
 
 Done when:
@@ -133,6 +147,7 @@ Done when:
 - every supported baseline claim is evidenced or explicitly deferred
 - evidence entries link to executable Rust tests or model conformance checks
 - the processor API remains replayable and deterministic
+- tests do not assume shell persistence is complete without an explicit event
 
 ### types-boundary-v0
 
@@ -266,6 +281,7 @@ Includes:
 - deterministic peer/network scheduling
 - partition and heal scenarios
 - stale timer input
+- delayed durability completion and durability-gated output scenarios
 - equivocation scenarios
 - invalid peer responses
 - prune-too-early scenarios
@@ -340,11 +356,13 @@ Includes:
 
 - adapter from runtime events into deterministic crate inputs
 - adapter from deterministic ready outputs into runtime actions
+- adapter from durable storage completion into lifecycle inputs
 - integration tests that preserve protocol boundaries
 
 Excludes:
 
 - protocol behavior hidden in shell code
+- direct DB reads as a substitute for explicit core inputs
 - replacing simulator evidence with runtime smoke tests
 - production-readiness claims before operational evidence exists
 
