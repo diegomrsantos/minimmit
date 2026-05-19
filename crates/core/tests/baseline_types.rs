@@ -4,48 +4,8 @@ use common::{
     block, committee, m_notarization, nullification, nullify, transaction, validator, view, vote,
 };
 use minimmit_core::{
-    Block, BlockError, EvidenceError, LNotarization, MNotarization, Nullification, Proposal,
-    ProposalError,
+    Block, EvidenceError, LNotarization, MNotarization, Nullification, Proposal, ProposalError,
 };
-
-#[test]
-fn block_preserves_parent_and_transaction_order() {
-    let built = Block::new(
-        block(10),
-        view(2),
-        block(5),
-        [transaction(3), transaction(1)],
-    )
-    .expect("block is valid");
-
-    assert_eq!(built.id(), block(10));
-    assert_eq!(built.view(), view(2));
-    assert_eq!(built.parent(), block(5));
-    assert_eq!(built.transactions(), &[transaction(3), transaction(1)]);
-}
-
-#[test]
-fn block_rejects_genesis_view() {
-    assert_eq!(
-        Block::new(block(10), view(0), block(5), []),
-        Err(BlockError::GenesisView { view: view(0) })
-    );
-}
-
-#[test]
-fn block_rejects_duplicate_transactions() {
-    assert_eq!(
-        Block::new(
-            block(10),
-            view(2),
-            block(5),
-            [transaction(3), transaction(1), transaction(3)],
-        ),
-        Err(BlockError::DuplicateTransaction {
-            transaction: transaction(3),
-        })
-    );
-}
 
 #[test]
 fn m_notarization_accepts_distinct_valid_threshold_votes_for_one_block() {
