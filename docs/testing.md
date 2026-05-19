@@ -26,6 +26,11 @@ Do not add, move, or preserve tests whose failure would primarily report a
 change in language, library, dependency, derived, or otherwise mechanical
 behavior rather than a change in Minimmit behavior.
 
+Test helpers should name meaningful domain setup, not scalar construction.
+Use direct public constructors such as `BlockId::new`, `ViewNumber::new`,
+`ValidatorId::new`, and `TransactionId::new` at the call site instead of
+wrapping them in test-only helpers.
+
 ## Test Layers
 
 - Small claim tests are the default. They cover thresholds, typed

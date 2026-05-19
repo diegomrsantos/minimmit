@@ -1,8 +1,7 @@
-#[path = "common/processor_transition.rs"]
 mod common;
 
-use common::{committee, validator, view};
-use minimmit_core::{Event, Processor, ProcessorError, Ready};
+use common::committee;
+use minimmit_core::{Event, Processor, ProcessorError, Ready, ValidatorId, ViewNumber};
 
 fn replay(processor: &mut Processor, events: &[Event]) -> Vec<Ready> {
     events
@@ -15,20 +14,20 @@ fn replay(processor: &mut Processor, events: &[Event]) -> Vec<Ready> {
 #[test]
 fn processor_starts_after_genesis_for_local_committee_member() {
     let committee = committee();
-    let processor =
-        Processor::new(validator(2), committee.clone()).expect("local validator is a member");
+    let processor = Processor::new(ValidatorId::new(2), committee.clone())
+        .expect("local validator is a member");
 
-    assert_eq!(processor.local_validator(), validator(2));
+    assert_eq!(processor.local_validator(), ValidatorId::new(2));
     assert_eq!(processor.committee(), &committee);
-    assert_eq!(processor.current_view(), view(1));
+    assert_eq!(processor.current_view(), ViewNumber::new(1));
 }
 
 #[test]
 fn processor_rejects_local_validator_outside_committee() {
     assert_eq!(
-        Processor::new(validator(99), committee()),
+        Processor::new(ValidatorId::new(99), committee()),
         Err(ProcessorError::UnknownLocalValidator {
-            validator: validator(99),
+            validator: ValidatorId::new(99),
         })
     );
 }
@@ -36,7 +35,7 @@ fn processor_rejects_local_validator_outside_committee() {
 #[test]
 fn noop_event_returns_no_ready_output_and_preserves_state() {
     let mut processor =
-        Processor::new(validator(0), committee()).expect("local validator is a member");
+        Processor::new(ValidatorId::new(0), committee()).expect("local validator is a member");
     let initial = processor.clone();
 
     let ready = processor.step(Event::Noop);
@@ -49,9 +48,10 @@ fn noop_event_returns_no_ready_output_and_preserves_state() {
 #[test]
 fn same_event_sequence_replays_to_same_ready_outputs() {
     let events = [Event::Noop, Event::Noop, Event::Noop];
-    let mut first = Processor::new(validator(0), committee()).expect("local validator is a member");
+    let mut first =
+        Processor::new(ValidatorId::new(0), committee()).expect("local validator is a member");
     let mut second =
-        Processor::new(validator(0), committee()).expect("local validator is a member");
+        Processor::new(ValidatorId::new(0), committee()).expect("local validator is a member");
 
     let first_outputs = replay(&mut first, &events);
     let second_outputs = replay(&mut second, &events);
