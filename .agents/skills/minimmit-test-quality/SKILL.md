@@ -28,6 +28,9 @@ test quality; it does not decide whether a protocol claim is evidenced.
 - Prefer table-style tests only when the cases share one clear behavior.
 - Avoid hidden time, randomness, network, shared state, or execution-order
   dependencies unless they are explicitly controlled by the test.
+- Before adding or relocating a test, identify the Minimmit-authored behavior
+  it protects. If the test only preserves mechanical coverage, do not add it;
+  remove it when cleanup scope permits.
 - Avoid tests that merely mirror private implementation structure.
 
 ## Test Implementation Shape
@@ -64,6 +67,8 @@ When touching existing tests, make the local implementation easier to read:
 - Split broad tests that combine unrelated success and failure paths.
 - Extract only the fixture construction that distracts from the assertion.
 - Keep assertion output actionable without requiring a debugger or large trace.
+- Remove tests that only preserve mechanical coverage when the task explicitly
+  permits removing or replacing coverage.
 - Preserve current coverage unless the task explicitly removes or replaces it.
 
 ## Coverage Pass
