@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::{Committee, ValidatorId, ViewNumber};
+use crate::{Committee, Ready, ValidatorId, ViewNumber};
 
 const FIRST_NON_GENESIS_VIEW: ViewNumber = ViewNumber::new(1);
 
@@ -82,30 +82,6 @@ impl Processor {
 pub enum Event {
     /// Explicit event with no protocol effect.
     Noop,
-}
-
-/// Deterministic output produced by a [`Processor`] transition.
-///
-/// The type is intentionally empty for the first transition-boundary slice.
-/// Later protocol behavior can add ready outputs without exposing runtime
-/// machinery through the processor API.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct Ready {
-    _private: (),
-}
-
-impl Ready {
-    /// Returns an empty ready output.
-    #[must_use]
-    pub const fn none() -> Self {
-        Self { _private: () }
-    }
-
-    /// Returns true when the transition produced no ready outputs.
-    #[must_use]
-    pub const fn is_empty(&self) -> bool {
-        true
-    }
 }
 
 /// Processor state construction errors.
