@@ -29,6 +29,11 @@ as persistence requests, but the shell owns DB execution and reports completion
 back through the deterministic event boundary. See
 [Core And Shell Lifecycle](core-shell-lifecycle.md) for the canonical boundary.
 
+When sync, store, simulation, or shell work can be overloaded, make degradation
+bounded, observable, and replayable instead of hiding debt in queues. See
+[Bounded Degradation](bounded-degradation.md) for the canonical overload
+vocabulary.
+
 ## Milestones
 
 ### baseline-core-v0
@@ -193,8 +198,10 @@ Includes:
 - artifact insertion
 - duplicate handling
 - missing artifact classification
+- artifact count and byte pressure visibility
 - retention obligations
 - prune refusal while retained artifacts are still required
+- tracked artifact cardinality observations
 - deterministic iteration where observable ordering matters
 
 Excludes:
@@ -234,13 +241,17 @@ Observation -> Sync -> Ready
 Includes:
 
 - missing artifact tracking
+- explicit admission outcomes for fetch and delivery work
+- bounded request and response queues
 - dependency expansion
 - verification before delivery
 - bounded retry
+- work-class priority for current-view and catch-up work
+- expiry, rejection, or drop reasons for stale or excess work
 - peer targeting
-- priority selection
 - retention coordination
 - pruning coordination
+- deterministic overload observations
 - deterministic ready outputs for requests and deliveries
 
 Excludes:
@@ -257,8 +268,11 @@ Tests:
 - skipped proof
 - invalid response
 - retry bound
+- queue item, byte, and age bounds
+- expiry and drop semantics
 - target selection
 - current-view priority
+- priority isolation under mixed load
 - duplicate delivery
 - starvation avoidance
 - bounded amplification
@@ -282,6 +296,11 @@ Includes:
 - partition and heal scenarios
 - stale timer input
 - delayed durability completion and durability-gated output scenarios
+- invalid-response floods
+- missing-artifact storms
+- stale backlog expiry
+- priority isolation under overload
+- hot dependency or resource contention
 - equivocation scenarios
 - invalid peer responses
 - prune-too-early scenarios
@@ -316,7 +335,11 @@ Metrics:
 - bytes requested
 - invalid responses
 - duplicate deliveries
+- rejected, delayed, dropped, and expired work
+- maximum queue depth and age
+- tracked-state cardinality
 - recovery latency
+- recovery tail under overload
 - starvation
 - prune failures
 
