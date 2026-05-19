@@ -20,6 +20,10 @@ literal, and easy to audit.
 - Before opening a pull request, after implementation and local verification,
   spawn a fresh review agent to review the implementation. Address any
   actionable findings, or record why they are deferred, before creating the PR.
+- After opening a pull request, do not merge it until the user explicitly says
+  they have reviewed that pull request and want it merged. General requests to
+  continue, or earlier merge approval for another pull request, do not authorize
+  merging a later pull request.
 - When creating or refining issues, follow `docs/issues.md`; use issue
   templates as forms, not as the canonical policy.
 - When creating or refining milestones, follow `docs/milestones.md`.
