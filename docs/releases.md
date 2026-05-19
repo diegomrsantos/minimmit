@@ -63,7 +63,8 @@ assured groundwork for later core behavior.
 
 `minimmit-core-v0.1.0` may be created when:
 
-- it exposes a usable deterministic `Event -> Core -> Ready` state machine
+- it exposes a usable deterministic `Event`/`Lifecycle` -> `Core` -> `Ready`
+  state machine
 - it supports a meaningful baseline protocol slice
 - docs explain supported and unsupported behavior
 - docs define whether hard outputs require lifecycle completion before

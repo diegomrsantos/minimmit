@@ -46,8 +46,8 @@ a timer system.
 
 That separation has practical advantages:
 
-- tests can drive the protocol with explicit input events
-- failures can be reproduced by replaying the same event sequence
+- tests can drive the protocol with explicit ordered input traces
+- failures can be reproduced by replaying the same input trace
 - threshold logic can be audited at the point where decisions are made
 - fuzzing and simulation can target the protocol without a production node
 - outer runtime code can change without changing protocol behavior
@@ -56,12 +56,14 @@ The intended direction is a small core shaped around explicit inputs and
 outputs:
 
 ```text
-Event -> Processor -> Ready
+Event     -> Processor -> Ready
+Lifecycle -> Processor -> Ready
 ```
 
-`Event` is what the protocol observes, `Processor` is the local deterministic
-state machine that applies the protocol rules for one validator identity, and
-`Ready` is what an outer runtime should do next.
+`Event` is what the protocol observes, `Lifecycle` is shell completion feedback,
+`Processor` is the local deterministic state machine that applies the protocol
+rules for one validator identity, and `Ready` is what an outer runtime should do
+next.
 
 Assurance guidance is documented under `docs/assurance/`; the core crate ledger
 lives at `crates/core/assurance.yaml`. Dependency policy is documented in

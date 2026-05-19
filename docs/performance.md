@@ -35,8 +35,8 @@ traces, logs, benchmark reports, or operational telemetry.
   when protocol-facing behavior changes.
 - Focused microbenchmarks should be added only after a hot path or data
   structure choice is stable enough that the benchmark will remain meaningful.
-- Deterministic scenario metrics should come after the `Event -> Core -> Ready`
-  boundary can be driven by replayable event sequences.
+- Deterministic scenario metrics should come after the `Event`/`Lifecycle` ->
+  `Core` -> `Ready` boundary can be driven by replayable input traces.
 - Sync and store performance evidence should measure bounded behavior under
   deterministic scenarios before claiming production relevance.
 - Runtime observability belongs in shell or integration crates that translate
@@ -87,8 +87,8 @@ alerts belong in outer runtime-facing crates.
 
 ## Defer
 
-Do not add these until the local `Event -> Core -> Ready` shape and later
-sync/store/simulation work justify them:
+Do not add these until the local `Event`/`Lifecycle` -> `Core` -> `Ready` shape
+and later sync/store/simulation work justify them:
 
 - Criterion or other benchmark dependencies in the workspace
 - benchmark CI gates or performance dashboards

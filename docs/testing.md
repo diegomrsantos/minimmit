@@ -17,13 +17,13 @@ paper claim -> explicit input -> core step -> semantic effect -> trace/replay ->
 
 Use the smallest deterministic test that gives useful confidence. For current
 `minimmit-core` work, this usually means pure Rust tests over typed protocol
-values. Once the deterministic core exposes an event boundary, protocol
+values. Once the deterministic core exposes an input boundary, protocol
 scenario tests should drive that boundary directly.
 
 When a core output depends on shell work becoming durable, tests should model
 that progress as an explicit lifecycle input. Do not let tests assume that a
 storage command completed unless the scenario feeds the corresponding
-completion event back into the core. See
+completion input back into the core. See
 [Core And Shell Lifecycle](core-shell-lifecycle.md) for the lifecycle boundary.
 
 Each test should protect behavior that Minimmit owns: protocol obligations,
@@ -42,10 +42,10 @@ wrapping them in test-only helpers.
 - Small claim tests are the default. They cover thresholds, typed
   construction, duplicate rejection, distinct sender counting, deterministic
   ordering, and precise errors.
-- Event-step tests should drive one explicit protocol or lifecycle event
+- Input-step tests should drive one explicit protocol event or lifecycle input
   through the core and inspect the returned protocol-visible output.
-- Scenario tests should feed a short event sequence, record step outcomes, and
-  assert a named protocol story.
+- Scenario tests should feed a short ordered input trace, record step outcomes,
+  and assert a named protocol story.
 - Replay fixtures should be added only after scenario shape stabilizes. A
   replayed failure must include enough metadata to reproduce it exactly.
 - Model conformance should map named model actions into Rust events and compare
@@ -53,7 +53,7 @@ wrapping them in test-only helpers.
 - Bounded event search should come after local scenario tests are useful. Start
   with seeded shuffle or small exhaustive event bags before richer scheduling.
 
-Only event-step and scenario testing are active Codex skill guidance for now.
+Only input-step and scenario testing are active Codex skill guidance for now.
 Replay fixtures, property packs, model conformance, and bounded search should
 get separate skills when the implementation reaches those layers.
 
@@ -85,7 +85,7 @@ threshold. `sometimes` properties should stay coverage signals.
 Any randomized, scheduled, or searched run that reports a candidate must record:
 
 - scenario family or test name
-- event sequence, or enough scheduler data to reconstruct it
+- ordered input trace, or enough scheduler data to reconstruct it
 - seed when randomness is used
 - scheduler name and version when scheduling is used
 - triggered `always` properties
@@ -97,8 +97,8 @@ Unreplayable failures are not acceptable evidence.
 Start replay and search work with short explicit traces. Move next to seeded
 shuffle or small exhaustive event bags. Richer scheduling, broad simulation,
 chaos, Antithesis integration, Jepsen-style external testing, and VOPR-style
-infrastructure should wait until local `Event -> Core -> Ready` scenarios prove
-the need.
+infrastructure should wait until local `Event`/`Lifecycle` -> `Core` -> `Ready`
+scenarios prove the need.
 
 For Quint or model conformance, map named model actions into Rust events at a
 protocol-local boundary. Compare semantic projected state, not every transient
@@ -110,9 +110,9 @@ evidence unless the trace drives Rust behavior.
 - Keep `minimmit-core` deterministic and free of hidden IO, wall-clock time,
   randomness, async scheduling, networking, storage engines, and production
   shell behavior.
-- Represent shell durability completion as explicit input when a protocol
+- Represent shell persistence completion as explicit input when a protocol
   output depends on it.
-- Assert durability-gated behavior through protocol-visible outputs, not DB
+- Assert persistence-gated behavior through protocol-visible outputs, not DB
   mechanics or shell queues.
 - Prefer behavior tests through public APIs and protocol-facing outputs.
 - Keep tests readable and actionable from the test name plus assertion output.
@@ -125,8 +125,8 @@ evidence unless the trace drives Rust behavior.
 
 ## Defer
 
-Do not add these until the local `Event -> Core -> Ready` shape and scenario
-tests justify them:
+Do not add these until the local `Event`/`Lifecycle` -> `Core` -> `Ready` shape
+and scenario tests justify them:
 
 - broad simulation or chaos framework
 - Antithesis integration

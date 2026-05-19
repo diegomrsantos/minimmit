@@ -59,52 +59,98 @@ impl Processor {
         self.current_view
     }
 
-    /// Applies one deterministic input event and returns ready output.
+    /// Applies one deterministic protocol event and returns ready output.
     ///
-    /// This initial transition boundary only supports [`Event::Noop`], which
-    /// lets tests and later scenario harnesses drive and replay the public
-    /// `Event -> Processor -> Ready` shape before protocol behaviors are added.
+    /// Claim-specific proposal, vote, nullification, forwarding, and
+    /// finalization events are added only with their own executable evidence.
     #[must_use]
     pub fn step(&mut self, event: Event) -> Ready {
         match event {
-            Event::Noop => Ready::none(),
+            Event::Noop => Ready::None,
+        }
+    }
+
+    /// Applies shell lifecycle feedback and returns ready output.
+    ///
+    /// Persistence acknowledgements are explicit lifecycle inputs. They are a
+    /// no-op until a real protocol transition emits persistence work and records
+    /// pending state that can be matched by [`PersistenceId`].
+    #[must_use]
+    pub fn lifecycle(&mut self, event: Lifecycle) -> Ready {
+        match event {
+            Lifecycle::Persisted(_) => Ready::None,
         }
     }
 }
 
-/// Deterministic input observed by [`Processor`].
+/// Deterministic protocol event observed by [`Processor`].
 ///
-/// Protocol message, timeout, and evidence events are intentionally not
-/// modeled here until their behavior is implemented with claim-specific
-/// executable evidence.
+/// Protocol message, timeout, and evidence events are intentionally not modeled
+/// here until their behavior is implemented with claim-specific executable
+/// evidence.
 #[non_exhaustive]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Event {
     /// Explicit event with no protocol effect.
     Noop,
 }
 
+/// Shell lifecycle feedback observed by [`Processor`].
+///
+/// Lifecycle input reports completion of shell-owned work without moving
+/// storage, networking, or runtime behavior into the core.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Lifecycle {
+    /// The shell completed persistence for work identified by the persistence id.
+    Persisted(PersistenceId),
+}
+
 /// Deterministic output produced by a [`Processor`] transition.
 ///
-/// The type is intentionally empty for the first transition-boundary slice.
-/// Later protocol behavior can add ready outputs without exposing runtime
-/// machinery through the processor API.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct Ready {
-    _private: (),
+/// `Ready` describes work an outer shell should perform. Network,
+/// storage-engine, timer, and runtime mechanics remain outside the core.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Ready {
+    /// The transition produced no ready output.
+    #[default]
+    None,
+    /// The shell should persist protocol state identified by `id`.
+    Persist {
+        /// Persistence correlation id the shell reports back after completion.
+        id: PersistenceId,
+    },
 }
 
 impl Ready {
-    /// Returns an empty ready output.
-    #[must_use]
-    pub const fn none() -> Self {
-        Self { _private: () }
-    }
-
     /// Returns true when the transition produced no ready outputs.
     #[must_use]
     pub const fn is_empty(&self) -> bool {
-        true
+        matches!(self, Self::None)
+    }
+}
+
+/// Identifier that correlates persistence output with lifecycle completion.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct PersistenceId(u64);
+
+impl PersistenceId {
+    /// Creates a persistence identifier.
+    #[must_use]
+    pub const fn new(value: u64) -> Self {
+        Self(value)
+    }
+
+    /// Returns the numeric persistence identifier.
+    #[must_use]
+    pub const fn get(self) -> u64 {
+        self.0
+    }
+}
+
+impl fmt::Display for PersistenceId {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "persistence {}", self.0)
     }
 }
 
