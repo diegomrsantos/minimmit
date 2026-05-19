@@ -157,39 +157,32 @@ mod tests {
     use super::{Block, BlockError};
     use crate::{BlockId, TransactionId, ViewNumber};
 
-    fn block(id: u64) -> BlockId {
-        BlockId::new(id)
-    }
-
-    fn transaction(id: u64) -> TransactionId {
-        TransactionId::new(id)
-    }
-
-    fn view(number: u64) -> ViewNumber {
-        ViewNumber::new(number)
-    }
-
     #[test]
     fn preserves_parent_and_transaction_order() {
         let built = Block::new(
-            block(10),
-            view(2),
-            block(5),
-            [transaction(3), transaction(1)],
+            BlockId::new(10),
+            ViewNumber::new(2),
+            BlockId::new(5),
+            [TransactionId::new(3), TransactionId::new(1)],
         )
         .expect("block is valid");
 
-        assert_eq!(built.id(), block(10));
-        assert_eq!(built.view(), view(2));
-        assert_eq!(built.parent(), block(5));
-        assert_eq!(built.transactions(), &[transaction(3), transaction(1)]);
+        assert_eq!(built.id(), BlockId::new(10));
+        assert_eq!(built.view(), ViewNumber::new(2));
+        assert_eq!(built.parent(), BlockId::new(5));
+        assert_eq!(
+            built.transactions(),
+            &[TransactionId::new(3), TransactionId::new(1)]
+        );
     }
 
     #[test]
     fn rejects_genesis_view() {
         assert_eq!(
-            Block::new(block(10), view(0), block(5), []),
-            Err(BlockError::GenesisView { view: view(0) })
+            Block::new(BlockId::new(10), ViewNumber::new(0), BlockId::new(5), []),
+            Err(BlockError::GenesisView {
+                view: ViewNumber::new(0),
+            })
         );
     }
 
@@ -197,13 +190,17 @@ mod tests {
     fn rejects_duplicate_transactions() {
         assert_eq!(
             Block::new(
-                block(10),
-                view(2),
-                block(5),
-                [transaction(3), transaction(1), transaction(3)],
+                BlockId::new(10),
+                ViewNumber::new(2),
+                BlockId::new(5),
+                [
+                    TransactionId::new(3),
+                    TransactionId::new(1),
+                    TransactionId::new(3),
+                ],
             ),
             Err(BlockError::DuplicateTransaction {
-                transaction: transaction(3),
+                transaction: TransactionId::new(3),
             })
         );
     }

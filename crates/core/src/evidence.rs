@@ -415,33 +415,25 @@ mod tests {
     const ONE_FAULT: usize = 1;
     const MIN_VALIDATORS_WITH_ONE_FAULT: usize = 6;
 
-    fn block(id: u64) -> BlockId {
-        BlockId::new(id)
-    }
-
     fn committee() -> Committee {
         Committee::new(validators(MIN_VALIDATORS_WITH_ONE_FAULT), ONE_FAULT)
             .expect("committee satisfies n >= 5f + 1")
     }
 
-    fn validator(id: u64) -> ValidatorId {
-        ValidatorId::new(id)
-    }
-
     fn validators(count: usize) -> Vec<ValidatorId> {
-        (0..count as u64).map(validator).collect()
-    }
-
-    fn view(number: u64) -> ViewNumber {
-        ViewNumber::new(number)
+        (0..count as u64).map(ValidatorId::new).collect()
     }
 
     fn vote(signer: u64, block_id: u64, view_number: u64) -> Vote {
-        Vote::new(validator(signer), block(block_id), view(view_number))
+        Vote::new(
+            ValidatorId::new(signer),
+            BlockId::new(block_id),
+            ViewNumber::new(view_number),
+        )
     }
 
     fn nullify(signer: u64, view_number: u64) -> Nullify {
-        Nullify::new(validator(signer), view(view_number))
+        Nullify::new(ValidatorId::new(signer), ViewNumber::new(view_number))
     }
 
     #[test]
@@ -451,11 +443,15 @@ mod tests {
             MNotarization::from_votes(&committee, [vote(2, 10, 3), vote(0, 10, 3), vote(1, 10, 3)])
                 .expect("three valid distinct votes meet the M threshold when f = 1");
 
-        assert_eq!(notarization.block(), block(10));
-        assert_eq!(notarization.view(), view(3));
+        assert_eq!(notarization.block(), BlockId::new(10));
+        assert_eq!(notarization.view(), ViewNumber::new(3));
         assert_eq!(
             notarization.signers().collect::<Vec<_>>(),
-            [validator(0), validator(1), validator(2)]
+            [
+                ValidatorId::new(0),
+                ValidatorId::new(1),
+                ValidatorId::new(2)
+            ]
         );
     }
 
@@ -487,16 +483,16 @@ mod tests {
         )
         .expect("five valid distinct votes meet the L threshold when n = 6 and f = 1");
 
-        assert_eq!(notarization.block(), block(10));
-        assert_eq!(notarization.view(), view(3));
+        assert_eq!(notarization.block(), BlockId::new(10));
+        assert_eq!(notarization.view(), ViewNumber::new(3));
         assert_eq!(
             notarization.signers().collect::<Vec<_>>(),
             [
-                validator(0),
-                validator(1),
-                validator(2),
-                validator(3),
-                validator(4),
+                ValidatorId::new(0),
+                ValidatorId::new(1),
+                ValidatorId::new(2),
+                ValidatorId::new(3),
+                ValidatorId::new(4),
             ]
         );
     }
@@ -523,10 +519,14 @@ mod tests {
         )
         .expect("three valid distinct nullify messages meet the threshold when f = 1");
 
-        assert_eq!(nullification.view(), view(3));
+        assert_eq!(nullification.view(), ViewNumber::new(3));
         assert_eq!(
             nullification.signers().collect::<Vec<_>>(),
-            [validator(0), validator(1), validator(2)]
+            [
+                ValidatorId::new(0),
+                ValidatorId::new(1),
+                ValidatorId::new(2)
+            ]
         );
     }
 
@@ -564,7 +564,7 @@ mod tests {
         assert_eq!(
             MNotarization::from_votes(&committee, [vote(0, 10, 3), vote(1, 10, 3), vote(0, 10, 3)],),
             Err(EvidenceError::DuplicateSigner {
-                signer: validator(0),
+                signer: ValidatorId::new(0),
             })
         );
         assert_eq!(
@@ -573,7 +573,7 @@ mod tests {
                 [nullify(0, 3), nullify(1, 3), nullify(0, 3)],
             ),
             Err(EvidenceError::DuplicateSigner {
-                signer: validator(0),
+                signer: ValidatorId::new(0),
             })
         );
     }
@@ -588,7 +588,7 @@ mod tests {
                 [vote(0, 10, 3), vote(1, 10, 3), vote(99, 10, 3)],
             ),
             Err(EvidenceError::UnknownSigner {
-                signer: validator(99),
+                signer: ValidatorId::new(99),
             })
         );
         assert_eq!(
@@ -597,7 +597,7 @@ mod tests {
                 [nullify(0, 3), nullify(1, 3), nullify(99, 3)],
             ),
             Err(EvidenceError::UnknownSigner {
-                signer: validator(99),
+                signer: ValidatorId::new(99),
             })
         );
     }
@@ -609,10 +609,10 @@ mod tests {
         assert_eq!(
             MNotarization::from_votes(&committee, [vote(0, 10, 3), vote(1, 11, 3), vote(2, 10, 3)],),
             Err(EvidenceError::ConflictingVoteTarget {
-                expected_block: block(10),
-                expected_view: view(3),
-                actual_block: block(11),
-                actual_view: view(3),
+                expected_block: BlockId::new(10),
+                expected_view: ViewNumber::new(3),
+                actual_block: BlockId::new(11),
+                actual_view: ViewNumber::new(3),
             })
         );
     }
@@ -627,8 +627,8 @@ mod tests {
                 [nullify(0, 3), nullify(1, 4), nullify(2, 3)],
             ),
             Err(EvidenceError::ConflictingNullificationView {
-                expected_view: view(3),
-                actual_view: view(4),
+                expected_view: ViewNumber::new(3),
+                actual_view: ViewNumber::new(4),
             })
         );
     }

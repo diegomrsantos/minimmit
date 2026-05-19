@@ -50,7 +50,11 @@ test quality; it does not decide whether a protocol claim is evidenced.
 
 ## Helper Rules
 
-- Use helpers for boring valid construction and repeated scalar wrappers.
+- Use helpers for meaningful valid domain construction, such as a threshold
+  notarization or nullification fixture.
+- Do not add helpers that merely rename scalar public constructors. Prefer
+  direct constructors like `BlockId::new`, `ViewNumber::new`,
+  `ValidatorId::new`, and `TransactionId::new` at the call site.
 - Do not let helpers hide the protocol fact or edge case under test.
 - Name helpers by domain meaning, not mechanics, such as `m_notarization` or
   `view_5_nullification`.

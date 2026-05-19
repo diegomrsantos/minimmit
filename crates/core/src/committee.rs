@@ -141,27 +141,24 @@ mod tests {
             .expect("committee satisfies n >= 5f + 1")
     }
 
-    fn validator(id: u64) -> ValidatorId {
-        ValidatorId::new(id)
-    }
-
     fn validators(count: usize) -> Vec<ValidatorId> {
-        (0..count as u64).map(validator).collect()
-    }
-
-    fn view(number: u64) -> ViewNumber {
-        ViewNumber::new(number)
+        (0..count as u64).map(ValidatorId::new).collect()
     }
 
     #[test]
     fn rejects_duplicate_validators() {
         assert_eq!(
             Committee::new(
-                [validator(0), validator(1), validator(1), validator(2)],
+                [
+                    ValidatorId::new(0),
+                    ValidatorId::new(1),
+                    ValidatorId::new(1),
+                    ValidatorId::new(2),
+                ],
                 ONE_FAULT,
             ),
             Err(CommitteeError::DuplicateValidator {
-                validator: validator(1),
+                validator: ValidatorId::new(1),
             })
         );
     }
@@ -184,12 +181,12 @@ mod tests {
     fn iterates_validators_in_identity_order() {
         let committee = Committee::new(
             [
-                validator(2),
-                validator(0),
-                validator(4),
-                validator(1),
-                validator(5),
-                validator(3),
+                ValidatorId::new(2),
+                ValidatorId::new(0),
+                ValidatorId::new(4),
+                ValidatorId::new(1),
+                ValidatorId::new(5),
+                ValidatorId::new(3),
             ],
             ONE_FAULT,
         )
@@ -205,21 +202,21 @@ mod tests {
     fn leader_uses_view_modulo_validator_identity_order() {
         let committee = Committee::new(
             [
-                validator(2),
-                validator(0),
-                validator(4),
-                validator(1),
-                validator(5),
-                validator(3),
+                ValidatorId::new(2),
+                ValidatorId::new(0),
+                ValidatorId::new(4),
+                ValidatorId::new(1),
+                ValidatorId::new(5),
+                ValidatorId::new(3),
             ],
             ONE_FAULT,
         )
         .expect("committee satisfies n >= 5f + 1");
 
-        assert_eq!(committee.leader(view(0)), validator(0));
-        assert_eq!(committee.leader(view(1)), validator(1));
-        assert_eq!(committee.leader(view(5)), validator(5));
-        assert_eq!(committee.leader(view(6)), validator(0));
+        assert_eq!(committee.leader(ViewNumber::new(0)), ValidatorId::new(0));
+        assert_eq!(committee.leader(ViewNumber::new(1)), ValidatorId::new(1));
+        assert_eq!(committee.leader(ViewNumber::new(5)), ValidatorId::new(5));
+        assert_eq!(committee.leader(ViewNumber::new(6)), ValidatorId::new(0));
     }
 
     #[test]
@@ -227,10 +224,10 @@ mod tests {
         let committee = committee();
 
         let count = committee.count_distinct_valid_senders([
-            validator(0),
-            validator(0),
-            validator(1),
-            validator(2),
+            ValidatorId::new(0),
+            ValidatorId::new(0),
+            ValidatorId::new(1),
+            ValidatorId::new(2),
         ]);
 
         assert_eq!(count, committee.config().m_threshold());
@@ -240,8 +237,11 @@ mod tests {
     fn unknown_senders_do_not_count() {
         let committee = committee();
 
-        let count =
-            committee.count_distinct_valid_senders([validator(0), validator(1), validator(99)]);
+        let count = committee.count_distinct_valid_senders([
+            ValidatorId::new(0),
+            ValidatorId::new(1),
+            ValidatorId::new(99),
+        ]);
 
         assert_eq!(count, 2);
     }
@@ -250,9 +250,13 @@ mod tests {
     fn exact_threshold_requires_distinct_valid_senders() {
         let committee = committee();
 
-        let below_threshold = committee.count_distinct_valid_senders([validator(0), validator(1)]);
-        let at_threshold =
-            committee.count_distinct_valid_senders([validator(0), validator(1), validator(2)]);
+        let below_threshold =
+            committee.count_distinct_valid_senders([ValidatorId::new(0), ValidatorId::new(1)]);
+        let at_threshold = committee.count_distinct_valid_senders([
+            ValidatorId::new(0),
+            ValidatorId::new(1),
+            ValidatorId::new(2),
+        ]);
 
         assert_eq!(below_threshold, committee.config().m_threshold() - 1);
         assert_eq!(at_threshold, committee.config().m_threshold());
@@ -263,14 +267,14 @@ mod tests {
         let committee = committee();
 
         let count = committee.count_distinct_valid_senders([
-            validator(0),
-            validator(0),
-            validator(1),
-            validator(6),
-            validator(99),
-            validator(2),
-            validator(2),
-            validator(3),
+            ValidatorId::new(0),
+            ValidatorId::new(0),
+            ValidatorId::new(1),
+            ValidatorId::new(6),
+            ValidatorId::new(99),
+            ValidatorId::new(2),
+            ValidatorId::new(2),
+            ValidatorId::new(3),
         ]);
 
         assert_eq!(count, 4);

@@ -120,80 +120,65 @@ mod tests {
     const ONE_FAULT: usize = 1;
     const MIN_VALIDATORS_WITH_ONE_FAULT: usize = 6;
 
-    fn block(id: u64) -> BlockId {
-        BlockId::new(id)
-    }
-
     fn committee() -> Committee {
         Committee::new(validators(MIN_VALIDATORS_WITH_ONE_FAULT), ONE_FAULT)
             .expect("committee satisfies n >= 5f + 1")
     }
 
-    fn m_notarization(block_id: u64, view_number: u64) -> MNotarization {
+    fn m_notarization(block_id: BlockId, view: ViewNumber) -> MNotarization {
         MNotarization::from_votes(
             &committee(),
             [
-                vote(0, block_id, view_number),
-                vote(1, block_id, view_number),
-                vote(2, block_id, view_number),
+                vote(0, block_id, view),
+                vote(1, block_id, view),
+                vote(2, block_id, view),
             ],
         )
         .expect("votes meet the M threshold")
     }
 
-    fn nullification(view_number: u64) -> Nullification {
+    fn nullification(view: ViewNumber) -> Nullification {
         Nullification::from_nullifies(
             &committee(),
-            [
-                nullify(0, view_number),
-                nullify(1, view_number),
-                nullify(2, view_number),
-            ],
+            [nullify(0, view), nullify(1, view), nullify(2, view)],
         )
         .expect("nullify messages meet the threshold")
     }
 
-    fn nullify(signer: u64, view_number: u64) -> Nullify {
-        Nullify::new(validator(signer), view(view_number))
-    }
-
-    fn transaction(id: u64) -> TransactionId {
-        TransactionId::new(id)
-    }
-
-    fn validator(id: u64) -> ValidatorId {
-        ValidatorId::new(id)
+    fn nullify(signer: u64, view: ViewNumber) -> Nullify {
+        Nullify::new(ValidatorId::new(signer), view)
     }
 
     fn validators(count: usize) -> Vec<ValidatorId> {
-        (0..count as u64).map(validator).collect()
+        (0..count as u64).map(ValidatorId::new).collect()
     }
 
-    fn view(number: u64) -> ViewNumber {
-        ViewNumber::new(number)
-    }
-
-    fn vote(signer: u64, block_id: u64, view_number: u64) -> Vote {
-        Vote::new(validator(signer), block(block_id), view(view_number))
+    fn vote(signer: u64, block_id: BlockId, view: ViewNumber) -> Vote {
+        Vote::new(ValidatorId::new(signer), block_id, view)
     }
 
     #[test]
     fn preserves_fields_and_orders_nullifications_by_view() {
-        let parent_notarization = m_notarization(10, 3);
-        let skipped_view_5 = nullification(5);
-        let skipped_view_4 = nullification(4);
-        let proposed_block =
-            Block::new(block(12), view(6), block(10), [transaction(1)]).expect("block is valid");
+        let parent_notarization = m_notarization(BlockId::new(10), ViewNumber::new(3));
+        let skipped_view_5 = nullification(ViewNumber::new(5));
+        let skipped_view_4 = nullification(ViewNumber::new(4));
+        let proposed_block = Block::new(
+            BlockId::new(12),
+            ViewNumber::new(6),
+            BlockId::new(10),
+            [TransactionId::new(1)],
+        )
+        .expect("block is valid");
 
         let proposal = Proposal::new(
-            validator(3),
+            ValidatorId::new(3),
             proposed_block.clone(),
             parent_notarization.clone(),
             [skipped_view_5, skipped_view_4],
         )
         .expect("nullification views are unique");
 
-        assert_eq!(proposal.proposer(), validator(3));
+        assert_eq!(proposal.proposer(), ValidatorId::new(3));
         assert_eq!(proposal.block(), &proposed_block);
         assert_eq!(proposal.parent_notarization(), &parent_notarization);
         assert_eq!(
@@ -201,30 +186,41 @@ mod tests {
                 .nullifications()
                 .map(Nullification::view)
                 .collect::<Vec<_>>(),
-            [view(4), view(5)]
+            [ViewNumber::new(4), ViewNumber::new(5)]
         );
     }
 
     #[test]
     fn rejects_duplicate_nullification_views() {
-        let parent_notarization = m_notarization(10, 3);
-        let first = nullification(5);
+        let parent_notarization = m_notarization(BlockId::new(10), ViewNumber::new(3));
+        let first = nullification(ViewNumber::new(5));
         let second = Nullification::from_nullifies(
             &committee(),
-            [nullify(3, 5), nullify(4, 5), nullify(5, 5)],
+            [
+                nullify(3, ViewNumber::new(5)),
+                nullify(4, ViewNumber::new(5)),
+                nullify(5, ViewNumber::new(5)),
+            ],
         )
         .expect("view 5 is nullified");
-        let proposed_block =
-            Block::new(block(12), view(6), block(10), [transaction(1)]).expect("block is valid");
+        let proposed_block = Block::new(
+            BlockId::new(12),
+            ViewNumber::new(6),
+            BlockId::new(10),
+            [TransactionId::new(1)],
+        )
+        .expect("block is valid");
 
         assert_eq!(
             Proposal::new(
-                validator(3),
+                ValidatorId::new(3),
                 proposed_block,
                 parent_notarization,
                 [first, second]
             ),
-            Err(ProposalError::DuplicateNullification { view: view(5) })
+            Err(ProposalError::DuplicateNullification {
+                view: ViewNumber::new(5),
+            })
         );
     }
 }
