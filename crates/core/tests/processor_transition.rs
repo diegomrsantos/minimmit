@@ -1,3 +1,4 @@
+#[path = "common/processor_transition.rs"]
 mod common;
 
 use common::{committee, validator, view};
