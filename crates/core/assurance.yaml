@@ -146,8 +146,12 @@ claims:
     source_anchor:
       sections: ["Algorithm 1"]
       labels: ["sendblock"]
-    status: planned
-    evidence: []
+    status: in_progress
+    evidence:
+      - kind: rust_test
+        artifact: crates/core/tests/processor_transition.rs
+      - kind: rust_test
+        artifact: crates/core/src/processor.rs
   MM-VOTE-VALID-PROPOSAL:
     claim: "A processor votes for a valid proposal only if it has not already voted and has not nullified the current view."
     source_anchor:

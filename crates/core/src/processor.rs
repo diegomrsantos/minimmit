@@ -1,8 +1,8 @@
 use std::{collections::BTreeMap, fmt};
 
 use crate::{
-    validate_proposal, BlockId, Committee, MNotarization, Nullification, Nullify, Proposal,
-    SignedBlock, ValidatorId, ViewNumber, Vote,
+    select_parent, validate_proposal, Block, BlockId, Committee, MNotarization, Nullification,
+    Nullify, Proposal, SignedBlock, TransactionId, ValidatorId, ViewNumber, Vote,
 };
 
 const FIRST_NON_GENESIS_VIEW: ViewNumber = ViewNumber::new(1);
@@ -21,6 +21,15 @@ pub struct Processor {
     observed_proposals: BTreeMap<ViewNumber, BTreeMap<BlockId, Proposal>>,
     observed_m_notarizations: BTreeMap<ViewNumber, BTreeMap<BlockId, MNotarization>>,
     observed_nullifications: BTreeMap<ViewNumber, Nullification>,
+    proposed_current_view: bool,
+    pending_proposal: Option<PendingProposal>,
+    next_persistence_id: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PendingProposal {
+    persistence_id: PersistenceId,
+    proposal: Proposal,
 }
 
 impl Processor {
@@ -47,6 +56,9 @@ impl Processor {
             observed_proposals: BTreeMap::new(),
             observed_m_notarizations: BTreeMap::new(),
             observed_nullifications: BTreeMap::new(),
+            proposed_current_view: false,
+            pending_proposal: None,
+            next_persistence_id: 1,
         })
     }
 
@@ -91,12 +103,15 @@ impl Processor {
     /// Applies one deterministic protocol event and returns ready output.
     ///
     /// Artifact events record local protocol evidence that is valid for this
-    /// processor's committee without implying any downstream vote, proposal,
-    /// forwarding, view advancement, or persistence behavior.
+    /// processor's committee without implying any downstream vote, forwarding,
+    /// view advancement, or persistence behavior. A local proposal trigger is
+    /// persistence-gated: it emits persistence work before the proposal itself
+    /// can be released through [`Lifecycle::Persisted`].
     #[must_use]
     pub fn step(&mut self, event: Event) -> Ready {
         match event {
             Event::Noop => Ready::None,
+            Event::Propose(input) => self.propose(input),
             Event::Proposal(proposal) => {
                 self.record_proposal(proposal);
                 Ready::None
@@ -114,14 +129,122 @@ impl Processor {
 
     /// Applies shell lifecycle feedback and returns ready output.
     ///
-    /// Persistence acknowledgements are explicit lifecycle inputs. They are a
-    /// no-op until a real protocol transition emits persistence work and records
-    /// pending state that can be matched by [`PersistenceId`].
+    /// Persistence acknowledgements are explicit lifecycle inputs. Unknown,
+    /// duplicate, or stale acknowledgements are deterministic no-ops.
     #[must_use]
     pub fn lifecycle(&mut self, event: Lifecycle) -> Ready {
         match event {
-            Lifecycle::Persisted(_) => Ready::None,
+            Lifecycle::Persisted(id) => self.release_persisted(id),
         }
+    }
+
+    /// Starts the local leader proposal transition when the current view allows it.
+    fn propose(&mut self, input: ProposalInput) -> Ready {
+        if self.proposed_current_view
+            || self.committee.leader(self.current_view) != self.local_validator
+        {
+            return Ready::None;
+        }
+
+        let Some(proposal) = self.build_proposal(input) else {
+            return Ready::None;
+        };
+        let Some(persistence_id) = self.allocate_persistence_id() else {
+            return Ready::None;
+        };
+
+        self.proposed_current_view = true;
+        self.pending_proposal = Some(PendingProposal {
+            persistence_id,
+            proposal,
+        });
+
+        Ready::Persist { id: persistence_id }
+    }
+
+    /// Releases proposal output after the matching persistence acknowledgement.
+    fn release_persisted(&mut self, id: PersistenceId) -> Ready {
+        let Some(pending) = self.pending_proposal.take() else {
+            return Ready::None;
+        };
+
+        if pending.persistence_id != id {
+            self.pending_proposal = Some(pending);
+            return Ready::None;
+        }
+
+        self.record_proposal(pending.proposal.clone());
+
+        Ready::Proposal {
+            proposal: pending.proposal,
+        }
+    }
+
+    /// Allocates the next persistence id without wrapping.
+    fn allocate_persistence_id(&mut self) -> Option<PersistenceId> {
+        let next = self.next_persistence_id.checked_add(1)?;
+        let id = PersistenceId::new(self.next_persistence_id);
+        self.next_persistence_id = next;
+        Some(id)
+    }
+
+    /// Builds the proposal that the local leader will release after persistence.
+    fn build_proposal(&self, input: ProposalInput) -> Option<Proposal> {
+        let parent = select_parent(self.observed_m_notarizations(), self.current_view).ok()?;
+        let parent_notarization = self.parent_notarization(parent.block(), parent.view())?;
+        let nullifications = self.skipped_view_nullifications(parent.view())?;
+        let block = Block::new(
+            input.block,
+            self.current_view,
+            parent.block(),
+            input.transactions,
+        )
+        .ok()?;
+
+        Proposal::new(
+            self.local_validator,
+            block,
+            parent_notarization,
+            nullifications,
+        )
+        .ok()
+    }
+
+    /// Returns the parent M-notarization carried by a local proposal.
+    fn parent_notarization(&self, block: BlockId, view: ViewNumber) -> Option<MNotarization> {
+        if block == BlockId::GENESIS && view == ViewNumber::GENESIS {
+            return self.implicit_genesis_notarization();
+        }
+
+        self.observed_m_notarizations
+            .get(&view)
+            .and_then(|by_block| by_block.get(&block))
+            .cloned()
+    }
+
+    /// Builds the implicit genesis M-notarization from deterministic committee order.
+    fn implicit_genesis_notarization(&self) -> Option<MNotarization> {
+        MNotarization::from_votes(
+            &self.committee,
+            self.committee
+                .validators()
+                .take(self.committee.config().m_threshold())
+                .map(|signer| Vote::new(signer, BlockId::GENESIS, ViewNumber::GENESIS)),
+        )
+        .ok()
+    }
+
+    /// Collects skipped-view nullifications required by a local proposal.
+    fn skipped_view_nullifications(&self, parent_view: ViewNumber) -> Option<Vec<Nullification>> {
+        let start = parent_view.get().checked_add(1)?;
+        let mut nullifications = Vec::new();
+
+        for view in start..self.current_view.get() {
+            let view = ViewNumber::new(view);
+            nullifications.push(self.observed_nullifications.get(&view)?.clone());
+        }
+
+        Some(nullifications)
     }
 
     /// Records a proposal when it validates against this processor's committee.
@@ -234,21 +357,61 @@ impl Processor {
 
 /// Deterministic protocol event observed by [`Processor`].
 ///
-/// Artifact events are admitted only when their evidence and proposal predicate
-/// validate against the processor's committee. Recording artifact events does
-/// not by itself imply voting, proposing, forwarding, advancement, or
-/// persistence.
+/// Events include local triggers and observed protocol artifacts. Artifact
+/// events are admitted only when their evidence and proposal predicate validate
+/// against the processor's committee. Recording artifact events does not by
+/// itself imply voting, proposing, forwarding, advancement, or persistence.
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Event {
     /// Explicit event with no protocol effect.
     Noop,
+    /// Local trigger to propose a block in the current view if this processor
+    /// is the leader.
+    Propose(ProposalInput),
     /// A proposal artifact observed by this processor.
     Proposal(Proposal),
     /// A nullification artifact observed by this processor.
     Nullification(Nullification),
     /// An M-notarization artifact observed by this processor.
     MNotarization(MNotarization),
+}
+
+/// Local block contents supplied to the leader proposal transition.
+///
+/// The processor chooses the current view and parent from local protocol state.
+/// Mempool policy, transaction payloads, hashing, and real signing stay outside
+/// `minimmit-core`, so the trigger carries only the modeled block identity and
+/// ordered transaction identifiers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProposalInput {
+    block: BlockId,
+    transactions: Vec<TransactionId>,
+}
+
+impl ProposalInput {
+    /// Creates local proposal input from a block identity and transaction ids.
+    pub fn new<I>(block: BlockId, transactions: I) -> Self
+    where
+        I: IntoIterator<Item = TransactionId>,
+    {
+        Self {
+            block,
+            transactions: transactions.into_iter().collect(),
+        }
+    }
+
+    /// Returns the requested block identity.
+    #[must_use]
+    pub fn block(&self) -> BlockId {
+        self.block
+    }
+
+    /// Returns the requested transaction identifiers in block order.
+    #[must_use]
+    pub fn transactions(&self) -> &[TransactionId] {
+        &self.transactions
+    }
 }
 
 /// Shell lifecycle feedback observed by [`Processor`].
@@ -266,7 +429,7 @@ pub enum Lifecycle {
 ///
 /// `Ready` describes work an outer shell should perform. Network,
 /// storage-engine, timer, and runtime mechanics remain outside the core.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum Ready {
     /// The transition produced no ready output.
     #[default]
@@ -275,6 +438,11 @@ pub enum Ready {
     Persist {
         /// Persistence correlation id the shell reports back after completion.
         id: PersistenceId,
+    },
+    /// The shell can release the persisted local proposal.
+    Proposal {
+        /// Proposal artifact ready for shell delivery.
+        proposal: Proposal,
     },
 }
 
@@ -331,3 +499,145 @@ impl fmt::Display for ProcessorError {
 }
 
 impl std::error::Error for ProcessorError {}
+
+#[cfg(test)]
+mod tests {
+    use super::{Event, Lifecycle, PersistenceId, Processor, ProposalInput, Ready};
+    use crate::{
+        BlockId, Committee, MNotarization, Nullification, Nullify, TransactionId, ValidatorId,
+        ViewNumber, Vote,
+    };
+
+    fn committee() -> Committee {
+        Committee::new((0..6).map(ValidatorId::new).collect::<Vec<_>>(), 1)
+            .expect("committee satisfies n >= 5f + 1")
+    }
+
+    fn processor_at_view(local_validator: ValidatorId, current_view: ViewNumber) -> Processor {
+        let mut processor =
+            Processor::new(local_validator, committee()).expect("local validator is a member");
+        processor.current_view = current_view;
+        processor
+    }
+
+    fn m_notarization(block: BlockId, view: ViewNumber) -> MNotarization {
+        MNotarization::from_votes(
+            &committee(),
+            [
+                Vote::new(ValidatorId::new(0), block, view),
+                Vote::new(ValidatorId::new(1), block, view),
+                Vote::new(ValidatorId::new(2), block, view),
+            ],
+        )
+        .expect("votes form an M-notarization")
+    }
+
+    fn nullification(view: ViewNumber) -> Nullification {
+        Nullification::from_nullifies(
+            &committee(),
+            [
+                Nullify::new(ValidatorId::new(0), view),
+                Nullify::new(ValidatorId::new(1), view),
+                Nullify::new(ValidatorId::new(2), view),
+            ],
+        )
+        .expect("nullifies form a nullification")
+    }
+
+    fn proposal_input(block: BlockId) -> ProposalInput {
+        ProposalInput::new(block, [TransactionId::new(block.get())])
+    }
+
+    fn released_proposal(ready: Ready) -> crate::Proposal {
+        let Ready::Proposal { proposal } = ready else {
+            panic!("expected proposal output, got {ready:?}");
+        };
+        proposal
+    }
+
+    #[test]
+    fn leader_proposal_uses_selected_non_genesis_parent_and_skipped_nullifications() {
+        let mut processor = processor_at_view(ValidatorId::new(5), ViewNumber::new(5));
+
+        // Current-view advancement is implemented later; seed the private view
+        // so this production branch has evidence before advancement reaches it.
+        assert_eq!(
+            processor.step(Event::MNotarization(m_notarization(
+                BlockId::new(30),
+                ViewNumber::new(3),
+            ))),
+            Ready::None
+        );
+        assert_eq!(
+            processor.step(Event::MNotarization(m_notarization(
+                BlockId::new(20),
+                ViewNumber::new(3),
+            ))),
+            Ready::None
+        );
+        assert_eq!(
+            processor.step(Event::MNotarization(m_notarization(
+                BlockId::new(10),
+                ViewNumber::new(2),
+            ))),
+            Ready::None
+        );
+        assert_eq!(
+            processor.step(Event::Nullification(nullification(ViewNumber::new(4)))),
+            Ready::None
+        );
+
+        assert_eq!(
+            processor.step(Event::Propose(proposal_input(BlockId::new(50)))),
+            Ready::Persist {
+                id: PersistenceId::new(1),
+            }
+        );
+        let proposal =
+            released_proposal(processor.lifecycle(Lifecycle::Persisted(PersistenceId::new(1))));
+
+        assert_eq!(proposal.block().parent(), BlockId::new(20));
+        assert_eq!(proposal.parent_notarization().block(), BlockId::new(20));
+        assert_eq!(proposal.parent_notarization().view(), ViewNumber::new(3));
+        assert_eq!(
+            proposal
+                .nullifications()
+                .map(Nullification::view)
+                .collect::<Vec<_>>(),
+            [ViewNumber::new(4)]
+        );
+    }
+
+    #[test]
+    fn leader_proposal_waits_for_all_skipped_view_nullifications() {
+        let mut processor = processor_at_view(ValidatorId::new(5), ViewNumber::new(5));
+
+        assert_eq!(
+            processor.step(Event::MNotarization(m_notarization(
+                BlockId::new(20),
+                ViewNumber::new(2),
+            ))),
+            Ready::None
+        );
+        assert_eq!(
+            processor.step(Event::Nullification(nullification(ViewNumber::new(3)))),
+            Ready::None
+        );
+
+        assert_eq!(
+            processor.step(Event::Propose(proposal_input(BlockId::new(50)))),
+            Ready::None
+        );
+        assert_eq!(
+            processor.step(Event::Nullification(nullification(ViewNumber::new(4)))),
+            Ready::None
+        );
+
+        assert_eq!(
+            processor.step(Event::Propose(proposal_input(BlockId::new(50)))),
+            Ready::Persist {
+                id: PersistenceId::new(1),
+            }
+        );
+    }
+}

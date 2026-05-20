@@ -3,8 +3,8 @@ mod common;
 use common::{committee, m_notarization};
 use minimmit_core::{
     Block, BlockId, Committee, Event, Lifecycle, MNotarization, Nullification, Nullify,
-    PersistenceId, Processor, ProcessorError, Proposal, Ready, TransactionId, ValidatorId,
-    ViewNumber, Vote,
+    PersistenceId, Processor, ProcessorError, Proposal, ProposalInput, Ready, TransactionId,
+    ValidatorId, ViewNumber, Vote,
 };
 
 #[derive(Clone)]
@@ -25,6 +25,11 @@ fn replay(processor: &mut Processor, inputs: Vec<TraceInput>) -> Vec<Ready> {
 
 fn processor() -> Processor {
     Processor::new(ValidatorId::new(0), committee()).expect("local validator is a member")
+}
+
+fn leader_processor_for_view_1() -> Processor {
+    Processor::new(ValidatorId::new(1), committee())
+        .expect("validator 1 leads view 1 in the test committee")
 }
 
 fn observed_proposal_blocks(processor: &Processor, view: ViewNumber) -> Vec<BlockId> {
@@ -60,6 +65,10 @@ fn observed_nullifications(processor: &Processor) -> Vec<ViewNumber> {
 
 fn proposal(block_id: BlockId, view: ViewNumber) -> Proposal {
     proposal_with_transaction(block_id, view, TransactionId::new(block_id.get()))
+}
+
+fn proposal_input(block_id: BlockId) -> ProposalInput {
+    ProposalInput::new(block_id, [TransactionId::new(block_id.get())])
 }
 
 fn proposal_with_transaction(
@@ -456,6 +465,110 @@ fn genesis_notarization_and_nullification_observations_are_ignored() {
 
     assert_eq!(observed_m_notarizations(&processor), []);
     assert_eq!(observed_nullifications(&processor), []);
+}
+
+#[test]
+fn leader_proposal_trigger_persists_before_releasing_proposal() {
+    let mut processor = leader_processor_for_view_1();
+
+    let ready = processor.step(Event::Propose(proposal_input(BlockId::new(10))));
+
+    assert_eq!(
+        ready,
+        Ready::Persist {
+            id: PersistenceId::new(1),
+        }
+    );
+    assert_eq!(observed_proposal_blocks(&processor, ViewNumber::new(1)), []);
+
+    let ready = processor.lifecycle(Lifecycle::Persisted(PersistenceId::new(1)));
+    let Ready::Proposal { proposal } = ready else {
+        panic!("expected persisted leader proposal, got {ready:?}");
+    };
+
+    assert_eq!(proposal.proposer(), ValidatorId::new(1));
+    assert_eq!(proposal.block().id(), BlockId::new(10));
+    assert_eq!(proposal.block().view(), ViewNumber::new(1));
+    assert_eq!(proposal.block().parent(), BlockId::GENESIS);
+    assert_eq!(proposal.block().transactions(), &[TransactionId::new(10)]);
+    assert_eq!(proposal.parent_notarization().block(), BlockId::GENESIS);
+    assert_eq!(proposal.parent_notarization().view(), ViewNumber::GENESIS);
+    assert_eq!(proposal.nullifications().count(), 0);
+    assert_eq!(
+        observed_proposal_blocks(&processor, ViewNumber::new(1)),
+        [BlockId::new(10)]
+    );
+}
+
+#[test]
+fn non_leader_proposal_trigger_returns_no_ready_output() {
+    let mut processor = processor();
+
+    let ready = processor.step(Event::Propose(proposal_input(BlockId::new(10))));
+
+    assert_eq!(ready, Ready::None);
+    assert!(ready.is_empty());
+    assert_eq!(observed_proposal_blocks(&processor, ViewNumber::new(1)), []);
+}
+
+#[test]
+fn leader_that_has_already_proposed_does_not_start_second_proposal() {
+    let mut processor = leader_processor_for_view_1();
+
+    assert_eq!(
+        processor.step(Event::Propose(proposal_input(BlockId::new(10)))),
+        Ready::Persist {
+            id: PersistenceId::new(1),
+        }
+    );
+
+    let ready = processor.step(Event::Propose(proposal_input(BlockId::new(11))));
+
+    assert_eq!(ready, Ready::None);
+    assert_eq!(observed_proposal_blocks(&processor, ViewNumber::new(1)), []);
+}
+
+#[test]
+fn invalid_leader_proposal_input_does_not_record_proposed_state() {
+    let mut processor = leader_processor_for_view_1();
+    let duplicate_transactions = ProposalInput::new(
+        BlockId::new(10),
+        [TransactionId::new(1), TransactionId::new(1)],
+    );
+
+    assert_eq!(
+        processor.step(Event::Propose(duplicate_transactions)),
+        Ready::None
+    );
+    assert_eq!(
+        processor.step(Event::Propose(proposal_input(BlockId::new(10)))),
+        Ready::Persist {
+            id: PersistenceId::new(1),
+        }
+    );
+}
+
+#[test]
+fn unknown_and_duplicate_persistence_acknowledgements_do_not_release_proposal() {
+    let mut processor = leader_processor_for_view_1();
+
+    assert_eq!(
+        processor.step(Event::Propose(proposal_input(BlockId::new(10)))),
+        Ready::Persist {
+            id: PersistenceId::new(1),
+        }
+    );
+    assert_eq!(
+        processor.lifecycle(Lifecycle::Persisted(PersistenceId::new(2))),
+        Ready::None
+    );
+
+    let ready = processor.lifecycle(Lifecycle::Persisted(PersistenceId::new(1)));
+    assert!(matches!(ready, Ready::Proposal { .. }));
+    assert_eq!(
+        processor.lifecycle(Lifecycle::Persisted(PersistenceId::new(1))),
+        Ready::None
+    );
 }
 
 #[test]

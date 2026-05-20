@@ -36,9 +36,10 @@ Protocol input
   -> Ready(dependent protocol output)
 ```
 
-The current processor only models this boundary. `Lifecycle::Persisted` is a
-deterministic no-op until a real protocol transition emits `Ready::Persist` and
-records pending persistence state.
+The current processor uses this boundary for local leader proposals.
+`Event::Propose` emits `Ready::Persist`, and the matching
+`Lifecycle::Persisted` releases the dependent proposal output. Unknown,
+duplicate, or stale persistence acknowledgements remain deterministic no-ops.
 
 The core must not secretly assume that a storage command completed. The shell
 must not hide completion of a protocol-relevant persistence request from the
