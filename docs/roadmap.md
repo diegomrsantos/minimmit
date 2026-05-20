@@ -24,9 +24,9 @@ networking, storage engines, wall-clock timers, and production orchestration
 belong outside `minimmit-core`.
 
 When core behavior depends on shell work becoming durable, model that as an
-explicit lifecycle input. The core may emit batch-correlated hard outputs such
-as persistence requests, but the shell owns DB execution and reports completion
-back through the deterministic event boundary. See
+explicit lifecycle input. The core may emit persistence-id-correlated hard
+outputs such as persistence requests, but the shell owns DB execution and
+reports completion back through the deterministic lifecycle boundary. See
 [Core And Shell Lifecycle](core-shell-lifecycle.md) for the canonical boundary.
 
 When sync, store, simulation, or shell work can be overloaded, make degradation
@@ -95,10 +95,10 @@ deterministic state machine.
 
 Includes:
 
-- `Processor`, `Event`, and `Ready`
-- batch identifiers for correlating hard outputs with lifecycle completion
-- minimal lifecycle input for durability completion, such as persisted ready
-  batch acknowledgement
+- `Processor`, `Event`, `Lifecycle`, and `Ready`
+- persistence identifiers for correlating hard outputs with lifecycle completion
+- minimal lifecycle input for persistence completion, such as persisted
+  acknowledgement
 - documented hard-output contract for persistence-gated protocol behavior
 - local view state
 - observed protocol artifacts
@@ -109,14 +109,14 @@ Includes:
 - receiving current-view M-notarization
 - receiving current-view nullification
 - per-view state reset on advancement
-- replay tests showing the same event sequence produces the same outputs
+- replay tests showing the same ordered input trace produces the same outputs
 
 Excludes:
 
 - durable snapshots
 - restart persistence
 - database-backed persistence
-- shell-side durability policy
+- shell-side persistence policy
 - real network messages
 - wall-clock scheduling
 - sync or fetch policy
@@ -143,7 +143,7 @@ Includes:
 - deterministic handling of multiple M-notarized blocks in one view
 - consistency-related regressions
 - view progression evidence
-- durability-sensitive behavior, such as persist-before-dependent-output paths,
+- persistence-sensitive behavior, such as persist-before-dependent-output paths,
   driven through explicit lifecycle input
 - explicit liveness evidence gaps where executable evidence is not yet present
 
@@ -207,7 +207,7 @@ Includes:
 Excludes:
 
 - database integration
-- filesystem durability
+- filesystem persistence
 - async I/O
 - production storage tuning
 - cache eviction based on wall-clock time
@@ -295,7 +295,7 @@ Includes:
 - deterministic peer/network scheduling
 - partition and heal scenarios
 - stale timer input
-- delayed durability completion and durability-gated output scenarios
+- delayed persistence completion and persistence-gated output scenarios
 - invalid-response floods
 - missing-artifact storms
 - stale backlog expiry
@@ -379,7 +379,7 @@ Includes:
 
 - adapter from runtime events into deterministic crate inputs
 - adapter from deterministic ready outputs into runtime actions
-- adapter from durable storage completion into lifecycle inputs
+- adapter from persistence completion into lifecycle inputs
 - integration tests that preserve protocol boundaries
 
 Excludes:

@@ -17,6 +17,9 @@ literal, and easy to audit.
 - One pull request must cover one concern.
 - Do not mix docs, refactors, protocol behavior, test infrastructure, CI, or
   formatting unless one change truly depends on the other.
+- Before opening or merging a pull request, fetch the latest `origin/main` and
+  bring the branch up to date so conflicts are resolved locally before GitHub
+  merge. Push that update as a normal follow-up commit by default.
 - Before opening a pull request, after implementation and local verification,
   spawn a fresh review agent to review the implementation. Address any
   actionable findings, or record why they are deferred, before creating the PR.
