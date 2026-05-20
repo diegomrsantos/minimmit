@@ -26,6 +26,11 @@ storage command completed unless the scenario feeds the corresponding
 completion input back into the core. See
 [Core And Shell Lifecycle](core-shell-lifecycle.md) for the lifecycle boundary.
 
+When sync, store, simulation, or shell work models overload, tests should assert
+bounded degradation through deterministic observations. See
+[Bounded Degradation](bounded-degradation.md) for overload vocabulary and
+testing implications.
+
 Each test should protect behavior that Minimmit owns: protocol obligations,
 project policy, validation, state transitions, or observable semantic output.
 Do not add, move, or preserve tests whose failure would primarily report a
@@ -46,6 +51,9 @@ wrapping them in test-only helpers.
   through the core and inspect the returned protocol-visible output.
 - Scenario tests should feed a short ordered input trace, record step outcomes,
   and assert a named protocol story.
+- Overload scenario tests should assert public deterministic observations such
+  as admission, rejection, expiry, queue age, or tracked-state pressure, not
+  private queue internals.
 - Replay fixtures should be added only after scenario shape stabilizes. A
   replayed failure must include enough metadata to reproduce it exactly.
 - Model conformance should map named model actions into Rust events and compare
@@ -114,6 +122,8 @@ evidence unless the trace drives Rust behavior.
   output depends on it.
 - Assert persistence-gated behavior through protocol-visible outputs, not DB
   mechanics or shell queues.
+- Assert bounded degradation through explicit observations when overload policy
+  belongs to the crate under test.
 - Prefer behavior tests through public APIs and protocol-facing outputs.
 - Keep tests readable and actionable from the test name plus assertion output.
 - Remove mechanical coverage instead of relocating it when cleanup scope

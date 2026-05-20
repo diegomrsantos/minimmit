@@ -1,0 +1,6 @@
+interface:
+  display_name: "Minimmit Resilience Review"
+  short_description: "Resilience review for protocol inputs"
+  default_prompt: "Use $minimmit-resilience-review to review a Minimmit protocol path for bounded-state and cheap-rejection risks."
+policy:
+  allow_implicit_invocation: true

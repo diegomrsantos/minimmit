@@ -46,6 +46,22 @@ Performance work should produce measured artifacts. A claim such as "faster",
 "bounded", "low overhead", or "scales better" needs a scenario, input size,
 measurement method, and reproducible command or report.
 
+## Bounded Degradation
+
+Overload evidence is not the same as raw throughput benchmarking. Before making
+performance claims about overloaded sync, store, simulation, or shell behavior,
+the overloaded path should have explicit bounds and deterministic observations.
+See [Bounded Degradation](bounded-degradation.md) for the canonical vocabulary.
+
+Useful overload evidence should show what happened when capacity was exceeded:
+which work was accepted, delayed, rejected, dropped, expired, or superseded, and
+which queue, byte, age, or tracked-state budget contained the pressure.
+
+Do not add runtime metrics, async hooks, or production telemetry dependencies to
+`minimmit-core` for overload visibility. Protocol and simulation metrics should
+come first from deterministic scenarios; operational telemetry belongs in outer
+runtime-facing crates.
+
 ## Metrics
 
 Keep two metric classes separate:
@@ -63,7 +79,11 @@ The comparison roadmap currently names the first useful protocol-side metrics:
 - bytes requested
 - invalid responses
 - duplicate deliveries
+- rejected, delayed, dropped, and expired work
+- maximum queue depth and age
+- tracked-state cardinality
 - recovery latency
+- recovery tail under overload
 - starvation
 - prune failures
 

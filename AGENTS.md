@@ -17,13 +17,20 @@ literal, and easy to audit.
 - One pull request must cover one concern.
 - Do not mix docs, refactors, protocol behavior, test infrastructure, CI, or
   formatting unless one change truly depends on the other.
+- Before opening or merging a pull request, fetch the latest `origin/main` and
+  bring the branch up to date so conflicts are resolved locally before GitHub
+  merge. Push that update as a normal follow-up commit by default.
 - Before opening a pull request, after implementation and local verification,
   spawn a fresh review agent to review the implementation. Address any
   actionable findings, or record why they are deferred, before creating the PR.
-- After opening a pull request, do not merge it until the user explicitly says
-  they have reviewed that pull request and want it merged. General requests to
-  continue, or earlier merge approval for another pull request, do not authorize
-  merging a later pull request.
+- After opening a pull request, do not amend commits or force-push that pull
+  request branch unless the user explicitly asks for a history rewrite. Add
+  follow-up commits to open pull request branches by default.
+- After opening a pull request, do not merge it until the user explicitly asks
+  to merge that pull request. A request such as "merge this PR" is sufficient
+  when the current PR is unambiguous. General requests to continue, or earlier
+  merge approval for another pull request, do not authorize merging a later
+  pull request.
 - When creating or refining issues, follow `docs/issues.md`; use issue
   templates as forms, not as the canonical policy.
 - When creating or refining milestones, follow `docs/milestones.md`.
