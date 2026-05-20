@@ -14,6 +14,8 @@ test readability or adequacy.
 
 For protocol behavior, also use `minimmit-protocol-tdd`. This skill improves
 test quality; it does not decide whether a protocol claim is evidenced.
+Use `docs/testing.md` as the canonical policy for test readability, helper
+boundaries, naming, literal expected values, and test comments.
 
 ## Test Design
 

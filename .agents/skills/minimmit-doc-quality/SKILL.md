@@ -60,6 +60,7 @@ Make a small documentation pass over the files you touched:
 - Test names should state the behavior under test.
 - Test comments should identify the protocol claim, scenario, or regression
   risk when the name and setup are not enough.
+- Follow `docs/testing.md` for the canonical test readability policy.
 - Keep helpers readable enough that assertions remain the focus.
 
 ## Context Control
