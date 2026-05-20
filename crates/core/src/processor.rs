@@ -1,6 +1,15 @@
-use std::fmt;
+use std::{
+    collections::{
+        btree_map::Entry::{Occupied, Vacant},
+        BTreeMap,
+    },
+    fmt,
+};
 
-use crate::{Committee, ValidatorId, ViewNumber};
+use crate::{
+    validate_proposal, BlockId, Committee, MNotarization, Nullification, Nullify, Proposal,
+    SignedBlock, ValidatorId, ViewNumber, Vote,
+};
 
 const FIRST_NON_GENESIS_VIEW: ViewNumber = ViewNumber::new(1);
 
@@ -15,6 +24,9 @@ pub struct Processor {
     local_validator: ValidatorId,
     committee: Committee,
     current_view: ViewNumber,
+    observed_proposals: BTreeMap<ViewNumber, BTreeMap<BlockId, Proposal>>,
+    observed_m_notarizations: BTreeMap<ViewNumber, BTreeMap<BlockId, MNotarization>>,
+    observed_nullifications: BTreeMap<ViewNumber, Nullification>,
 }
 
 impl Processor {
@@ -38,6 +50,9 @@ impl Processor {
             local_validator,
             committee,
             current_view: FIRST_NON_GENESIS_VIEW,
+            observed_proposals: BTreeMap::new(),
+            observed_m_notarizations: BTreeMap::new(),
+            observed_nullifications: BTreeMap::new(),
         })
     }
 
@@ -59,14 +74,47 @@ impl Processor {
         self.current_view
     }
 
+    /// Iterates observed proposals for `view` in deterministic block order.
+    pub fn observed_proposals(&self, view: ViewNumber) -> impl Iterator<Item = &Proposal> + '_ {
+        self.observed_proposals
+            .get(&view)
+            .into_iter()
+            .flat_map(|by_block| by_block.values())
+    }
+
+    /// Iterates observed M-notarizations in deterministic view then block order.
+    pub fn observed_m_notarizations(&self) -> impl Iterator<Item = &MNotarization> + '_ {
+        self.observed_m_notarizations
+            .values()
+            .flat_map(|by_block| by_block.values())
+    }
+
+    /// Iterates observed nullifications in deterministic view order.
+    pub fn observed_nullifications(&self) -> impl Iterator<Item = &Nullification> + '_ {
+        self.observed_nullifications.values()
+    }
+
     /// Applies one deterministic protocol event and returns ready output.
     ///
-    /// Claim-specific proposal, vote, nullification, forwarding, and
-    /// finalization events are added only with their own executable evidence.
+    /// Artifact events record local protocol evidence that is valid for this
+    /// processor's committee without implying any downstream vote, proposal,
+    /// forwarding, view advancement, or persistence behavior.
     #[must_use]
     pub fn step(&mut self, event: Event) -> Ready {
         match event {
             Event::Noop => Ready::None,
+            Event::Proposal(proposal) => {
+                self.record_proposal(proposal);
+                Ready::None
+            }
+            Event::Nullification(nullification) => {
+                self.record_nullification(nullification);
+                Ready::None
+            }
+            Event::MNotarization(notarization) => {
+                self.record_m_notarization(notarization);
+                Ready::None
+            }
         }
     }
 
@@ -81,18 +129,128 @@ impl Processor {
             Lifecycle::Persisted(_) => Ready::None,
         }
     }
+
+    fn record_proposal(&mut self, proposal: Proposal) {
+        if !self.valid_proposal_observation(&proposal) {
+            return;
+        }
+
+        let view = proposal.block().view();
+        let block = proposal.block().id();
+
+        self.observed_proposals
+            .entry(view)
+            .or_default()
+            .entry(block)
+            .or_insert(proposal);
+    }
+
+    fn record_m_notarization(&mut self, notarization: MNotarization) {
+        let view = notarization.view();
+        if view == ViewNumber::GENESIS {
+            return;
+        }
+        if !self.valid_m_notarization(&notarization) {
+            return;
+        }
+
+        let block = notarization.block();
+        match self
+            .observed_m_notarizations
+            .entry(view)
+            .or_default()
+            .entry(block)
+        {
+            Vacant(entry) => {
+                entry.insert(notarization);
+            }
+            Occupied(mut entry) => {
+                if signer_set_is_less(notarization.signers(), entry.get().signers()) {
+                    entry.insert(notarization);
+                }
+            }
+        }
+    }
+
+    fn record_nullification(&mut self, nullification: Nullification) {
+        let view = nullification.view();
+        if view == ViewNumber::GENESIS {
+            return;
+        }
+        if !self.valid_nullification(&nullification) {
+            return;
+        }
+
+        match self.observed_nullifications.entry(view) {
+            Vacant(entry) => {
+                entry.insert(nullification);
+            }
+            Occupied(mut entry) => {
+                if signer_set_is_less(nullification.signers(), entry.get().signers()) {
+                    entry.insert(nullification);
+                }
+            }
+        }
+    }
+
+    fn valid_proposal_observation(&self, proposal: &Proposal) -> bool {
+        if !self.valid_m_notarization(proposal.parent_notarization())
+            || proposal
+                .nullifications()
+                .any(|nullification| !self.valid_nullification(nullification))
+        {
+            return false;
+        }
+
+        let signed_block = SignedBlock::new(proposal.proposer(), proposal.block().clone());
+        validate_proposal(
+            &self.committee,
+            proposal.block().view(),
+            [&signed_block],
+            [proposal.parent_notarization()],
+            proposal.nullifications(),
+        )
+        .is_ok()
+    }
+
+    fn valid_m_notarization(&self, notarization: &MNotarization) -> bool {
+        MNotarization::from_votes(
+            &self.committee,
+            notarization
+                .signers()
+                .map(|signer| Vote::new(signer, notarization.block(), notarization.view())),
+        )
+        .is_ok()
+    }
+
+    fn valid_nullification(&self, nullification: &Nullification) -> bool {
+        Nullification::from_nullifies(
+            &self.committee,
+            nullification
+                .signers()
+                .map(|signer| Nullify::new(signer, nullification.view())),
+        )
+        .is_ok()
+    }
 }
 
 /// Deterministic protocol event observed by [`Processor`].
 ///
-/// Protocol message, timeout, and evidence events are intentionally not modeled
-/// here until their behavior is implemented with claim-specific executable
-/// evidence.
+/// Artifact events are admitted only when their evidence and proposal predicate
+/// validate against the processor's committee. Recording artifact events does
+/// not by itself imply voting, proposing, forwarding, advancement, or
+/// persistence.
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Event {
     /// Explicit event with no protocol effect.
     Noop,
+    /// A proposal artifact observed by this processor.
+    Proposal(Proposal),
+    /// A nullification artifact observed by this processor.
+    Nullification(Nullification),
+    /// An M-notarization artifact observed by this processor.
+    MNotarization(MNotarization),
 }
 
 /// Shell lifecycle feedback observed by [`Processor`].
@@ -175,3 +333,12 @@ impl fmt::Display for ProcessorError {
 }
 
 impl std::error::Error for ProcessorError {}
+
+fn signer_set_is_less(
+    candidate: impl Iterator<Item = ValidatorId>,
+    existing: impl Iterator<Item = ValidatorId>,
+) -> bool {
+    // Evidence stores signers in deterministic set order, so iterator
+    // comparison selects the lexicographically least proof for the same key.
+    candidate.cmp(existing).is_lt()
+}
