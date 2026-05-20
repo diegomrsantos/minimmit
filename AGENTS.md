@@ -7,6 +7,10 @@ literal, and easy to audit.
 
 - After the bootstrap commit, do not commit directly to protected `main`.
 - Use a branch and pull request for every code change.
+- Before creating a new work branch, fetch the latest `origin/main`, update the
+  local base branch from it, and create the work branch only from that updated
+  base. Do not branch from stale `main` or from an old feature branch unless
+  the user explicitly asks for that base.
 - Do not prefix branch names or pull request titles with `codex` or `[codex]`.
 - Use semantic commit messages for commits and pull request titles, such as
   `docs: expand README motivation`, `fix: correct threshold counting`, or
