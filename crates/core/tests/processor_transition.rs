@@ -34,6 +34,51 @@ fn step_no_ready(processor: &mut Processor, event: Event) {
     assert!(ready.is_empty());
 }
 
+fn observed_proposal_blocks(processor: &Processor, view: ViewNumber) -> Vec<BlockId> {
+    processor
+        .observed_proposals(view)
+        .map(|proposal| proposal.block().id())
+        .collect()
+}
+
+fn observed_proposal_transactions(
+    processor: &Processor,
+    view: ViewNumber,
+) -> Vec<Vec<TransactionId>> {
+    processor
+        .observed_proposals(view)
+        .map(|proposal| proposal.block().transactions().to_vec())
+        .collect()
+}
+
+fn observed_m_notarizations(processor: &Processor) -> Vec<(ViewNumber, BlockId)> {
+    processor
+        .observed_m_notarizations()
+        .map(|notarization| (notarization.view(), notarization.block()))
+        .collect()
+}
+
+fn observed_nullifications(processor: &Processor) -> Vec<ViewNumber> {
+    processor
+        .observed_nullifications()
+        .map(Nullification::view)
+        .collect()
+}
+
+fn observed_m_notarization_signers(processor: &Processor) -> Vec<Vec<ValidatorId>> {
+    processor
+        .observed_m_notarizations()
+        .map(|notarization| notarization.signers().collect())
+        .collect()
+}
+
+fn observed_nullification_signers(processor: &Processor) -> Vec<Vec<ValidatorId>> {
+    processor
+        .observed_nullifications()
+        .map(|nullification| nullification.signers().collect())
+        .collect()
+}
+
 fn proposal(block_id: BlockId, view: ViewNumber) -> Proposal {
     proposal_with_transaction(block_id, view, TransactionId::new(block_id.get()))
 }
@@ -176,17 +221,16 @@ fn noop_event_returns_no_ready_output_and_preserves_state() {
 fn proposal_event_records_proposal_without_ready_output_or_view_change() {
     let mut processor = processor();
     let proposal = proposal(BlockId::new(20), ViewNumber::new(2));
-    let expected = proposal.clone();
 
     let ready = processor.step(Event::Proposal(proposal));
 
-    let observed = processor
-        .observed_proposals(ViewNumber::new(2))
-        .collect::<Vec<_>>();
     assert_eq!(ready, Ready::None);
     assert!(ready.is_empty());
     assert_eq!(processor.current_view(), ViewNumber::new(1));
-    assert_eq!(observed, vec![&expected]);
+    assert_eq!(
+        observed_proposal_blocks(&processor, ViewNumber::new(2)),
+        [BlockId::new(20)]
+    );
 }
 
 #[test]
@@ -196,14 +240,10 @@ fn nullification_event_records_current_view_nullification_without_ready_output()
 
     let ready = processor.step(Event::Nullification(nullification));
 
-    let observed = processor
-        .observed_nullifications()
-        .map(Nullification::view)
-        .collect::<Vec<_>>();
     assert_eq!(ready, Ready::None);
     assert!(ready.is_empty());
     assert_eq!(processor.current_view(), ViewNumber::new(1));
-    assert_eq!(observed, [ViewNumber::new(1)]);
+    assert_eq!(observed_nullifications(&processor), [ViewNumber::new(1)]);
 }
 
 #[test]
@@ -213,14 +253,13 @@ fn m_notarization_event_records_current_view_notarization_without_ready_output()
 
     let ready = processor.step(Event::MNotarization(notarization));
 
-    let observed = processor
-        .observed_m_notarizations()
-        .map(|notarization| (notarization.view(), notarization.block()))
-        .collect::<Vec<_>>();
     assert_eq!(ready, Ready::None);
     assert!(ready.is_empty());
     assert_eq!(processor.current_view(), ViewNumber::new(1));
-    assert_eq!(observed, [(ViewNumber::new(1), BlockId::new(20))]);
+    assert_eq!(
+        observed_m_notarizations(&processor),
+        [(ViewNumber::new(1), BlockId::new(20))]
+    );
 }
 
 #[test]
@@ -237,10 +276,7 @@ fn observed_proposals_iterate_by_block_id_within_view() {
     );
 
     assert_eq!(
-        processor
-            .observed_proposals(ViewNumber::new(2))
-            .map(|proposal| proposal.block().id())
-            .collect::<Vec<_>>(),
+        observed_proposal_blocks(&processor, ViewNumber::new(2)),
         [BlockId::new(20), BlockId::new(30)]
     );
 }
@@ -263,10 +299,7 @@ fn observed_m_notarizations_iterate_by_view_then_block_id() {
     );
 
     assert_eq!(
-        processor
-            .observed_m_notarizations()
-            .map(|notarization| (notarization.view(), notarization.block()))
-            .collect::<Vec<_>>(),
+        observed_m_notarizations(&processor),
         [
             (ViewNumber::new(1), BlockId::new(40)),
             (ViewNumber::new(2), BlockId::new(20)),
@@ -286,11 +319,10 @@ fn conflicting_same_block_proposal_keeps_first_observed_proposal() {
     step_no_ready(&mut processor, Event::Proposal(first));
     step_no_ready(&mut processor, Event::Proposal(conflicting));
 
-    let observed = processor
-        .observed_proposals(ViewNumber::new(2))
-        .collect::<Vec<_>>();
-    assert_eq!(observed.len(), 1);
-    assert_eq!(observed[0].block().transactions(), &[TransactionId::new(1)]);
+    assert_eq!(
+        observed_proposal_transactions(&processor, ViewNumber::new(2)),
+        [vec![TransactionId::new(1)]]
+    );
 }
 
 #[test]
@@ -308,29 +340,21 @@ fn same_key_evidence_keeps_lexicographically_least_signer_set() {
     step_no_ready(&mut processor, Event::Nullification(higher_nullification));
     step_no_ready(&mut processor, Event::Nullification(lower_nullification));
 
-    let m_notarization = processor
-        .observed_m_notarizations()
-        .next()
-        .expect("M-notarization was recorded");
-    let nullification = processor
-        .observed_nullifications()
-        .next()
-        .expect("nullification was recorded");
     assert_eq!(
-        m_notarization.signers().collect::<Vec<_>>(),
-        [
+        observed_m_notarization_signers(&processor),
+        [vec![
             ValidatorId::new(0),
             ValidatorId::new(1),
             ValidatorId::new(2)
-        ]
+        ]]
     );
     assert_eq!(
-        nullification.signers().collect::<Vec<_>>(),
-        [
+        observed_nullification_signers(&processor),
+        [vec![
             ValidatorId::new(0),
             ValidatorId::new(1),
             ValidatorId::new(2)
-        ]
+        ]]
     );
 }
 
@@ -353,26 +377,14 @@ fn future_observations_are_stored_without_advancing_view() {
 
     assert_eq!(processor.current_view(), ViewNumber::new(1));
     assert_eq!(
-        processor
-            .observed_proposals(ViewNumber::new(4))
-            .map(|proposal| proposal.block().id())
-            .collect::<Vec<_>>(),
+        observed_proposal_blocks(&processor, ViewNumber::new(4)),
         [BlockId::new(40)]
     );
     assert_eq!(
-        processor
-            .observed_m_notarizations()
-            .map(MNotarization::view)
-            .collect::<Vec<_>>(),
-        [ViewNumber::new(3)]
+        observed_m_notarizations(&processor),
+        [(ViewNumber::new(3), BlockId::new(30))]
     );
-    assert_eq!(
-        processor
-            .observed_nullifications()
-            .map(Nullification::view)
-            .collect::<Vec<_>>(),
-        [ViewNumber::new(5)]
-    );
+    assert_eq!(observed_nullifications(&processor), [ViewNumber::new(5)]);
 }
 
 #[test]
@@ -395,12 +407,9 @@ fn foreign_committee_artifacts_are_ignored() {
         )),
     );
 
-    assert!(processor.observed_m_notarizations().next().is_none());
-    assert!(processor.observed_nullifications().next().is_none());
-    assert!(processor
-        .observed_proposals(ViewNumber::new(1))
-        .next()
-        .is_none());
+    assert_eq!(observed_m_notarizations(&processor), []);
+    assert_eq!(observed_nullifications(&processor), []);
+    assert_eq!(observed_proposal_blocks(&processor, ViewNumber::new(1)), []);
 }
 
 #[test]
@@ -415,10 +424,7 @@ fn proposal_not_signed_by_view_leader_is_ignored() {
 
     step_no_ready(&mut processor, Event::Proposal(wrong_leader_proposal));
 
-    assert!(processor
-        .observed_proposals(ViewNumber::new(1))
-        .next()
-        .is_none());
+    assert_eq!(observed_proposal_blocks(&processor, ViewNumber::new(1)), []);
 }
 
 #[test]
@@ -434,8 +440,8 @@ fn genesis_notarization_and_nullification_observations_are_ignored() {
         Event::Nullification(nullification(ViewNumber::GENESIS)),
     );
 
-    assert!(processor.observed_m_notarizations().next().is_none());
-    assert!(processor.observed_nullifications().next().is_none());
+    assert_eq!(observed_m_notarizations(&processor), []);
+    assert_eq!(observed_nullifications(&processor), []);
 }
 
 #[test]
