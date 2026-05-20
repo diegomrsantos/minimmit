@@ -30,16 +30,17 @@ The exact Rust names can evolve with the state-machine API, but the contract is:
 
 ```text
 Protocol input
-  -> Ready::Persist { id }
+  -> Ready::Persist { id, proposal }
   -> shell commits durable storage
   -> Lifecycle::Persisted(id)
   -> Ready(dependent protocol output)
 ```
 
 The current processor uses this boundary for local leader proposals.
-`Event::Propose` emits `Ready::Persist`, and the matching
-`Lifecycle::Persisted` releases the dependent proposal output. Unknown,
-duplicate, or stale persistence acknowledgements remain deterministic no-ops.
+`Event::Propose` emits `Ready::Persist` with the proposal payload the shell
+must make durable, and the matching `Lifecycle::Persisted` releases the
+dependent proposal output. Unknown, duplicate, or stale persistence
+acknowledgements remain deterministic no-ops.
 
 The core must not secretly assume that a storage command completed. The shell
 must not hide completion of a protocol-relevant persistence request from the
@@ -106,8 +107,8 @@ A persistence-sensitive transition should look like this:
 
 ```text
 1. Protocol event enters the core.
-2. Core records the transition as pending and emits Ready::Persist { id: 42 }:
-     storage: persist the protocol projection or artifact reference
+2. Core records the transition as pending and emits Ready::Persist { id: 42, ... }:
+     storage: persist the protocol projection or artifact
 3. Shell commits the DB transaction.
 4. Shell feeds Lifecycle::Persisted(42).
 5. Core moves the pending transition into durable state.

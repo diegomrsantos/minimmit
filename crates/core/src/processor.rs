@@ -156,10 +156,13 @@ impl Processor {
         self.proposed_current_view = true;
         self.pending_proposal = Some(PendingProposal {
             persistence_id,
-            proposal,
+            proposal: proposal.clone(),
         });
 
-        Ready::Persist { id: persistence_id }
+        Ready::Persist {
+            id: persistence_id,
+            proposal,
+        }
     }
 
     /// Releases proposal output after the matching persistence acknowledgement.
@@ -438,6 +441,8 @@ pub enum Ready {
     Persist {
         /// Persistence correlation id the shell reports back after completion.
         id: PersistenceId,
+        /// Proposal artifact the shell should persist before release.
+        proposal: Proposal,
     },
     /// The shell can release the persisted local proposal.
     Proposal {
@@ -548,6 +553,13 @@ mod tests {
         ProposalInput::new(block, [TransactionId::new(block.get())])
     }
 
+    fn persisted_proposal(ready: Ready) -> (PersistenceId, crate::Proposal) {
+        let Ready::Persist { id, proposal } = ready else {
+            panic!("expected persistence output, got {ready:?}");
+        };
+        (id, proposal)
+    }
+
     fn released_proposal(ready: Ready) -> crate::Proposal {
         let Ready::Proposal { proposal } = ready else {
             panic!("expected proposal output, got {ready:?}");
@@ -587,15 +599,13 @@ mod tests {
             Ready::None
         );
 
-        assert_eq!(
-            processor.step(Event::Propose(proposal_input(BlockId::new(50)))),
-            Ready::Persist {
-                id: PersistenceId::new(1),
-            }
-        );
+        let (id, persisted) =
+            persisted_proposal(processor.step(Event::Propose(proposal_input(BlockId::new(50)))));
+        assert_eq!(id, PersistenceId::new(1));
         let proposal =
             released_proposal(processor.lifecycle(Lifecycle::Persisted(PersistenceId::new(1))));
 
+        assert_eq!(proposal, persisted);
         assert_eq!(proposal.block().parent(), BlockId::new(20));
         assert_eq!(proposal.parent_notarization().block(), BlockId::new(20));
         assert_eq!(proposal.parent_notarization().view(), ViewNumber::new(3));
@@ -633,11 +643,8 @@ mod tests {
             Ready::None
         );
 
-        assert_eq!(
-            processor.step(Event::Propose(proposal_input(BlockId::new(50)))),
-            Ready::Persist {
-                id: PersistenceId::new(1),
-            }
-        );
+        let (id, _) =
+            persisted_proposal(processor.step(Event::Propose(proposal_input(BlockId::new(50)))));
+        assert_eq!(id, PersistenceId::new(1));
     }
 }

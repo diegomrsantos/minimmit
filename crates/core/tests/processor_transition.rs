@@ -71,6 +71,31 @@ fn proposal_input(block_id: BlockId) -> ProposalInput {
     ProposalInput::new(block_id, [TransactionId::new(block_id.get())])
 }
 
+fn persisted_proposal(ready: Ready) -> (PersistenceId, Proposal) {
+    let Ready::Persist { id, proposal } = ready else {
+        panic!("expected persistence output, got {ready:?}");
+    };
+    (id, proposal)
+}
+
+fn released_proposal(ready: Ready) -> Proposal {
+    let Ready::Proposal { proposal } = ready else {
+        panic!("expected proposal output, got {ready:?}");
+    };
+    proposal
+}
+
+fn assert_view_1_leader_proposal(proposal: &Proposal) {
+    assert_eq!(proposal.proposer(), ValidatorId::new(1));
+    assert_eq!(proposal.block().id(), BlockId::new(10));
+    assert_eq!(proposal.block().view(), ViewNumber::new(1));
+    assert_eq!(proposal.block().parent(), BlockId::GENESIS);
+    assert_eq!(proposal.block().transactions(), &[TransactionId::new(10)]);
+    assert_eq!(proposal.parent_notarization().block(), BlockId::GENESIS);
+    assert_eq!(proposal.parent_notarization().view(), ViewNumber::GENESIS);
+    assert_eq!(proposal.nullifications().count(), 0);
+}
+
 fn proposal_with_transaction(
     block_id: BlockId,
     view: ViewNumber,
@@ -473,27 +498,15 @@ fn leader_proposal_trigger_persists_before_releasing_proposal() {
 
     let ready = processor.step(Event::Propose(proposal_input(BlockId::new(10))));
 
-    assert_eq!(
-        ready,
-        Ready::Persist {
-            id: PersistenceId::new(1),
-        }
-    );
+    let (id, persisted) = persisted_proposal(ready);
+    assert_eq!(id, PersistenceId::new(1));
+    assert_view_1_leader_proposal(&persisted);
     assert_eq!(observed_proposal_blocks(&processor, ViewNumber::new(1)), []);
 
     let ready = processor.lifecycle(Lifecycle::Persisted(PersistenceId::new(1)));
-    let Ready::Proposal { proposal } = ready else {
-        panic!("expected persisted leader proposal, got {ready:?}");
-    };
+    let proposal = released_proposal(ready);
 
-    assert_eq!(proposal.proposer(), ValidatorId::new(1));
-    assert_eq!(proposal.block().id(), BlockId::new(10));
-    assert_eq!(proposal.block().view(), ViewNumber::new(1));
-    assert_eq!(proposal.block().parent(), BlockId::GENESIS);
-    assert_eq!(proposal.block().transactions(), &[TransactionId::new(10)]);
-    assert_eq!(proposal.parent_notarization().block(), BlockId::GENESIS);
-    assert_eq!(proposal.parent_notarization().view(), ViewNumber::GENESIS);
-    assert_eq!(proposal.nullifications().count(), 0);
+    assert_eq!(proposal, persisted);
     assert_eq!(
         observed_proposal_blocks(&processor, ViewNumber::new(1)),
         [BlockId::new(10)]
@@ -515,12 +528,9 @@ fn non_leader_proposal_trigger_returns_no_ready_output() {
 fn leader_that_has_already_proposed_does_not_start_second_proposal() {
     let mut processor = leader_processor_for_view_1();
 
-    assert_eq!(
-        processor.step(Event::Propose(proposal_input(BlockId::new(10)))),
-        Ready::Persist {
-            id: PersistenceId::new(1),
-        }
-    );
+    let (id, _) =
+        persisted_proposal(processor.step(Event::Propose(proposal_input(BlockId::new(10)))));
+    assert_eq!(id, PersistenceId::new(1));
 
     let ready = processor.step(Event::Propose(proposal_input(BlockId::new(11))));
 
@@ -540,24 +550,18 @@ fn invalid_leader_proposal_input_does_not_record_proposed_state() {
         processor.step(Event::Propose(duplicate_transactions)),
         Ready::None
     );
-    assert_eq!(
-        processor.step(Event::Propose(proposal_input(BlockId::new(10)))),
-        Ready::Persist {
-            id: PersistenceId::new(1),
-        }
-    );
+    let (id, _) =
+        persisted_proposal(processor.step(Event::Propose(proposal_input(BlockId::new(10)))));
+    assert_eq!(id, PersistenceId::new(1));
 }
 
 #[test]
 fn unknown_and_duplicate_persistence_acknowledgements_do_not_release_proposal() {
     let mut processor = leader_processor_for_view_1();
 
-    assert_eq!(
-        processor.step(Event::Propose(proposal_input(BlockId::new(10)))),
-        Ready::Persist {
-            id: PersistenceId::new(1),
-        }
-    );
+    let (id, _) =
+        persisted_proposal(processor.step(Event::Propose(proposal_input(BlockId::new(10)))));
+    assert_eq!(id, PersistenceId::new(1));
     assert_eq!(
         processor.lifecycle(Lifecycle::Persisted(PersistenceId::new(2))),
         Ready::None
@@ -587,6 +591,7 @@ fn persisted_lifecycle_without_pending_work_returns_no_ready_output() {
 fn persist_ready_output_is_not_empty() {
     let ready = Ready::Persist {
         id: PersistenceId::new(42),
+        proposal: proposal(BlockId::new(20), ViewNumber::new(2)),
     };
 
     assert!(!ready.is_empty());
