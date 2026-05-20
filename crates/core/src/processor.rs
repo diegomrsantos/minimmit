@@ -124,6 +124,11 @@ impl Processor {
         }
     }
 
+    /// Records a proposal when it validates against this processor's committee.
+    ///
+    /// Duplicate observations for the same `(view, block)` keep the first
+    /// admitted proposal so observation storage stays deterministic without
+    /// choosing a later replacement policy.
     fn record_proposal(&mut self, proposal: Proposal) {
         if !self.valid_proposal_observation(&proposal) {
             return;
@@ -139,6 +144,11 @@ impl Processor {
             .or_insert(proposal);
     }
 
+    /// Records a non-genesis M-notarization valid for this processor's committee.
+    ///
+    /// Duplicate observations for the same `(view, block)` keep the first
+    /// admitted notarization. Forwarding can add a separate proof-selection
+    /// policy when forwarding output exists.
     fn record_m_notarization(&mut self, notarization: MNotarization) {
         let view = notarization.view();
         if view == ViewNumber::GENESIS {
@@ -156,6 +166,10 @@ impl Processor {
             .or_insert(notarization);
     }
 
+    /// Records a non-genesis nullification valid for this processor's committee.
+    ///
+    /// Duplicate observations for the same view keep the first admitted
+    /// nullification.
     fn record_nullification(&mut self, nullification: Nullification) {
         let view = nullification.view();
         if view == ViewNumber::GENESIS {
@@ -170,6 +184,11 @@ impl Processor {
             .or_insert(nullification);
     }
 
+    /// Returns whether a proposal can be admitted into this processor's state.
+    ///
+    /// Admission requires the carried evidence to validate against this
+    /// processor's committee and the proposal predicate to hold for the
+    /// proposal's view.
     fn valid_proposal_observation(&self, proposal: &Proposal) -> bool {
         if !self.valid_m_notarization(proposal.parent_notarization())
             || proposal
@@ -190,6 +209,7 @@ impl Processor {
         .is_ok()
     }
 
+    /// Returns whether an M-notarization certificate belongs to this committee.
     fn valid_m_notarization(&self, notarization: &MNotarization) -> bool {
         MNotarization::from_votes(
             &self.committee,
@@ -200,6 +220,7 @@ impl Processor {
         .is_ok()
     }
 
+    /// Returns whether a nullification certificate belongs to this committee.
     fn valid_nullification(&self, nullification: &Nullification) -> bool {
         Nullification::from_nullifies(
             &self.committee,
