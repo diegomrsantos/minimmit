@@ -137,36 +137,39 @@ fn m_notarization_with_signers(
     .expect("votes form an M-notarization")
 }
 
-fn foreign_committee() -> Committee {
+fn other_committee() -> Committee {
     Committee::new((10..16).map(ValidatorId::new).collect::<Vec<_>>(), 1)
-        .expect("foreign committee satisfies n >= 5f + 1")
+        .expect("other committee satisfies n >= 5f + 1")
 }
 
-fn foreign_m_notarization(block_id: BlockId, view: ViewNumber) -> MNotarization {
+fn m_notarization_from_other_committee(block_id: BlockId, view: ViewNumber) -> MNotarization {
     MNotarization::from_votes(
-        &foreign_committee(),
+        &other_committee(),
         [
             Vote::new(ValidatorId::new(10), block_id, view),
             Vote::new(ValidatorId::new(11), block_id, view),
             Vote::new(ValidatorId::new(12), block_id, view),
         ],
     )
-    .expect("foreign votes form an M-notarization")
+    .expect("other-committee votes form an M-notarization")
 }
 
-fn foreign_nullification(view: ViewNumber) -> Nullification {
+fn nullification_from_other_committee(view: ViewNumber) -> Nullification {
     Nullification::from_nullifies(
-        &foreign_committee(),
+        &other_committee(),
         [
             Nullify::new(ValidatorId::new(10), view),
             Nullify::new(ValidatorId::new(11), view),
             Nullify::new(ValidatorId::new(12), view),
         ],
     )
-    .expect("foreign nullifies form a nullification")
+    .expect("other-committee nullifies form a nullification")
 }
 
-fn proposal_with_foreign_parent(block_id: BlockId, view: ViewNumber) -> Proposal {
+fn proposal_with_parent_notarization_from_other_committee(
+    block_id: BlockId,
+    view: ViewNumber,
+) -> Proposal {
     let block = Block::new(
         block_id,
         view,
@@ -178,7 +181,7 @@ fn proposal_with_foreign_parent(block_id: BlockId, view: ViewNumber) -> Proposal
     Proposal::new(
         committee().leader(view),
         block,
-        foreign_m_notarization(BlockId::GENESIS, ViewNumber::GENESIS),
+        m_notarization_from_other_committee(BlockId::GENESIS, ViewNumber::GENESIS),
         [],
     )
     .expect("proposal nullification views are unique")
@@ -388,23 +391,29 @@ fn future_observations_are_stored_without_advancing_view() {
 }
 
 #[test]
-fn foreign_committee_artifacts_are_ignored() {
+fn artifacts_valid_for_another_committee_are_ignored() {
     let mut processor = processor();
+    let notarization_valid_for_another_committee =
+        m_notarization_from_other_committee(BlockId::new(20), ViewNumber::new(1));
+    let nullification_valid_for_another_committee =
+        nullification_from_other_committee(ViewNumber::new(1));
+    let proposal_with_parent_from_another_committee =
+        proposal_with_parent_notarization_from_other_committee(
+            BlockId::new(30),
+            ViewNumber::new(1),
+        );
 
     step_no_ready(
         &mut processor,
-        Event::MNotarization(foreign_m_notarization(BlockId::new(20), ViewNumber::new(1))),
+        Event::MNotarization(notarization_valid_for_another_committee),
     );
     step_no_ready(
         &mut processor,
-        Event::Nullification(foreign_nullification(ViewNumber::new(1))),
+        Event::Nullification(nullification_valid_for_another_committee),
     );
     step_no_ready(
         &mut processor,
-        Event::Proposal(proposal_with_foreign_parent(
-            BlockId::new(30),
-            ViewNumber::new(1),
-        )),
+        Event::Proposal(proposal_with_parent_from_another_committee),
     );
 
     assert_eq!(observed_m_notarizations(&processor), []);
