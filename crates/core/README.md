@@ -31,8 +31,7 @@ boundary:
 Lifecycle -> Processor -> Ready
 ```
 
-The first lifecycle input is persistence completion. The shell owns the storage
-work and reports completion with the matching persistence identifier. Current
-processor transitions do not emit persistence work yet, so persistence
-completion is a deterministic no-op until a real protocol transition records
-pending persistence state.
+`Lifecycle` is intentionally empty today. The current leader proposal
+transition returns storage and network work together in `Ready`; when both
+outputs refer to the same proposal, the shell persists first and broadcasts
+only after the proposal is durable.

@@ -18,7 +18,7 @@ pub use config::{Config, ConfigError};
 pub use evidence::{EvidenceError, LNotarization, MNotarization, Nullification, Nullify, Vote};
 pub use identity::{BlockId, TransactionId, ValidatorId, ViewNumber};
 pub use processor::{
-    Event, Lifecycle, PersistenceId, Processor, ProcessorError, ProposalInput, Ready,
+    Event, Lifecycle, NetworkReady, Processor, ProcessorError, ProposalInput, Ready, StorageReady,
 };
 pub use proposal::{Proposal, ProposalError};
 pub use proposal_validation::{

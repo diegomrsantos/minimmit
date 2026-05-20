@@ -22,14 +22,6 @@ pub struct Processor {
     observed_m_notarizations: BTreeMap<ViewNumber, BTreeMap<BlockId, MNotarization>>,
     observed_nullifications: BTreeMap<ViewNumber, Nullification>,
     proposed_current_view: bool,
-    pending_proposal: Option<PendingProposal>,
-    next_persistence_id: u64,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct PendingProposal {
-    persistence_id: PersistenceId,
-    proposal: Proposal,
 }
 
 impl Processor {
@@ -57,8 +49,6 @@ impl Processor {
             observed_m_notarizations: BTreeMap::new(),
             observed_nullifications: BTreeMap::new(),
             proposed_current_view: false,
-            pending_proposal: None,
-            next_persistence_id: 1,
         })
     }
 
@@ -104,38 +94,38 @@ impl Processor {
     ///
     /// Artifact events record local protocol evidence that is valid for this
     /// processor's committee without implying any downstream vote, forwarding,
-    /// view advancement, or persistence behavior. A local proposal trigger is
-    /// persistence-gated: it emits persistence work before the shell may
-    /// release the proposal.
+    /// view advancement, or persistence behavior. A local proposal trigger
+    /// records the proposal immediately and emits storage plus network work;
+    /// when both outputs refer to that proposal, the shell must persist before
+    /// broadcasting it.
     #[must_use]
     pub fn step(&mut self, event: Event) -> Ready {
         match event {
-            Event::Noop => Ready::None,
+            Event::Noop => Ready::default(),
             Event::Propose(input) => self.propose(input),
             Event::Proposal(proposal) => {
                 self.record_proposal(proposal);
-                Ready::None
+                Ready::default()
             }
             Event::Nullification(nullification) => {
                 self.record_nullification(nullification);
-                Ready::None
+                Ready::default()
             }
             Event::MNotarization(notarization) => {
                 self.record_m_notarization(notarization);
-                Ready::None
+                Ready::default()
             }
         }
     }
 
     /// Applies shell lifecycle feedback and returns ready output.
     ///
-    /// Persistence acknowledgements are explicit lifecycle inputs. Unknown,
-    /// duplicate, or stale acknowledgements are deterministic no-ops.
+    /// There are no lifecycle signals in the current core surface. The method
+    /// remains as the deterministic boundary for future shell completion inputs
+    /// that must re-enter protocol state.
     #[must_use]
     pub fn lifecycle(&mut self, event: Lifecycle) -> Ready {
-        match event {
-            Lifecycle::Persisted(id) => self.acknowledge_persisted(id),
-        }
+        match event {}
     }
 
     /// Starts the local leader proposal transition when the current view allows it.
@@ -143,53 +133,23 @@ impl Processor {
         if self.proposed_current_view
             || self.committee.leader(self.current_view) != self.local_validator
         {
-            return Ready::None;
+            return Ready::default();
         }
 
         let Some(proposal) = self.build_proposal(input) else {
-            return Ready::None;
-        };
-        let Some(persistence_id) = self.allocate_persistence_id() else {
-            return Ready::None;
+            return Ready::default();
         };
 
         self.proposed_current_view = true;
-        self.pending_proposal = Some(PendingProposal {
-            persistence_id,
-            proposal: proposal.clone(),
-        });
+        self.record_proposal(proposal.clone());
 
-        Ready::Persist {
-            id: persistence_id,
-            proposal,
+        Ready {
+            storage: vec![StorageReady::PersistProposal(proposal.clone())],
+            network: vec![NetworkReady::BroadcastProposal(proposal)],
         }
     }
 
-    /// Marks persisted proposal work complete after the matching acknowledgement.
-    fn acknowledge_persisted(&mut self, id: PersistenceId) -> Ready {
-        let Some(pending) = self.pending_proposal.take() else {
-            return Ready::None;
-        };
-
-        if pending.persistence_id != id {
-            self.pending_proposal = Some(pending);
-            return Ready::None;
-        }
-
-        self.record_proposal(pending.proposal);
-
-        Ready::None
-    }
-
-    /// Allocates the next persistence id without wrapping.
-    fn allocate_persistence_id(&mut self) -> Option<PersistenceId> {
-        let next = self.next_persistence_id.checked_add(1)?;
-        let id = PersistenceId::new(self.next_persistence_id);
-        self.next_persistence_id = next;
-        Some(id)
-    }
-
-    /// Builds the proposal that the local leader asks the shell to persist.
+    /// Builds the proposal that the local leader records and asks the shell to handle.
     fn build_proposal(&self, input: ProposalInput) -> Option<Proposal> {
         let parent = select_parent(self.observed_m_notarizations(), self.current_view).ok()?;
         let parent_notarization = self.parent_notarization(parent.block(), parent.view())?;
@@ -418,61 +378,47 @@ impl ProposalInput {
 /// Shell lifecycle feedback observed by [`Processor`].
 ///
 /// Lifecycle input reports completion of shell-owned work without moving
-/// storage, networking, or runtime behavior into the core.
+/// storage, networking, or runtime behavior into the core. The current core has
+/// no lifecycle signals; new variants should be added only when shell
+/// completion must change later protocol behavior.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Lifecycle {
-    /// The shell completed persistence for work identified by the persistence id.
-    Persisted(PersistenceId),
-}
+pub enum Lifecycle {}
 
 /// Deterministic output produced by a [`Processor`] transition.
 ///
-/// `Ready` describes work an outer shell should perform. Network,
-/// storage-engine, timer, and runtime mechanics remain outside the core.
+/// `Ready` describes work an outer shell should perform. Storage outputs are
+/// listed separately from network outputs so a shell can make protocol
+/// artifacts durable before releasing dependent messages. When a storage output
+/// and a network output refer to the same proposal, the shell persists it first
+/// and only then broadcasts it.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub enum Ready {
-    /// The transition produced no ready output.
-    #[default]
-    None,
-    /// The shell should persist protocol state identified by `id`.
-    Persist {
-        /// Persistence correlation id the shell reports back after completion.
-        id: PersistenceId,
-        /// Proposal artifact the shell should persist before releasing it.
-        proposal: Proposal,
-    },
+pub struct Ready {
+    /// Storage work the shell should complete.
+    pub storage: Vec<StorageReady>,
+    /// Network work the shell should release after required storage work.
+    pub network: Vec<NetworkReady>,
+}
+
+/// Storage work produced by a [`Processor`] transition.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StorageReady {
+    /// Persist a proposal before releasing dependent network output.
+    PersistProposal(Proposal),
+}
+
+/// Network work produced by a [`Processor`] transition.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NetworkReady {
+    /// Broadcast a proposal after its matching storage output is durable.
+    BroadcastProposal(Proposal),
 }
 
 impl Ready {
     /// Returns true when the transition produced no ready outputs.
     #[must_use]
-    pub const fn is_empty(&self) -> bool {
-        matches!(self, Self::None)
-    }
-}
-
-/// Identifier that correlates persistence output with lifecycle completion.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct PersistenceId(u64);
-
-impl PersistenceId {
-    /// Creates a persistence identifier.
-    #[must_use]
-    pub const fn new(value: u64) -> Self {
-        Self(value)
-    }
-
-    /// Returns the numeric persistence identifier.
-    #[must_use]
-    pub const fn get(self) -> u64 {
-        self.0
-    }
-}
-
-impl fmt::Display for PersistenceId {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "persistence {}", self.0)
+    pub fn is_empty(&self) -> bool {
+        self.storage.is_empty() && self.network.is_empty()
     }
 }
 
@@ -500,7 +446,7 @@ impl std::error::Error for ProcessorError {}
 
 #[cfg(test)]
 mod tests {
-    use super::{Event, Lifecycle, PersistenceId, Processor, ProposalInput, Ready};
+    use super::{Event, NetworkReady, Processor, ProposalInput, Ready, StorageReady};
     use crate::{
         BlockId, Committee, MNotarization, Nullification, Nullify, TransactionId, ValidatorId,
         ViewNumber, Vote,
@@ -546,11 +492,15 @@ mod tests {
         ProposalInput::new(block, [TransactionId::new(block.get())])
     }
 
-    fn persisted_proposal(ready: Ready) -> (PersistenceId, crate::Proposal) {
-        let Ready::Persist { id, proposal } = ready else {
-            panic!("expected persistence output, got {ready:?}");
-        };
-        (id, proposal)
+    fn ready_proposal(ready: Ready) -> crate::Proposal {
+        assert_eq!(ready.storage.len(), 1, "expected one storage output");
+        assert_eq!(ready.network.len(), 1, "expected one network output");
+
+        let StorageReady::PersistProposal(persisted) = &ready.storage[0];
+        let NetworkReady::BroadcastProposal(broadcast) = &ready.network[0];
+
+        assert_eq!(persisted, broadcast);
+        persisted.clone()
     }
 
     #[test]
@@ -564,39 +514,34 @@ mod tests {
                 BlockId::new(30),
                 ViewNumber::new(3),
             ))),
-            Ready::None
+            Ready::default()
         );
         assert_eq!(
             processor.step(Event::MNotarization(m_notarization(
                 BlockId::new(20),
                 ViewNumber::new(3),
             ))),
-            Ready::None
+            Ready::default()
         );
         assert_eq!(
             processor.step(Event::MNotarization(m_notarization(
                 BlockId::new(10),
                 ViewNumber::new(2),
             ))),
-            Ready::None
+            Ready::default()
         );
         assert_eq!(
             processor.step(Event::Nullification(nullification(ViewNumber::new(4)))),
-            Ready::None
+            Ready::default()
         );
 
-        let (id, persisted) =
-            persisted_proposal(processor.step(Event::Propose(proposal_input(BlockId::new(50)))));
-        assert_eq!(id, PersistenceId::new(1));
-        assert_eq!(
-            processor.lifecycle(Lifecycle::Persisted(PersistenceId::new(1))),
-            Ready::None
-        );
+        let persisted =
+            ready_proposal(processor.step(Event::Propose(proposal_input(BlockId::new(50)))));
 
         let proposal = processor
             .observed_proposals(ViewNumber::new(5))
             .next()
-            .expect("acknowledged proposal is recorded");
+            .expect("leader proposal is recorded immediately");
         assert_eq!(proposal, &persisted);
         assert_eq!(proposal.block().parent(), BlockId::new(20));
         assert_eq!(proposal.parent_notarization().block(), BlockId::new(20));
@@ -619,24 +564,22 @@ mod tests {
                 BlockId::new(20),
                 ViewNumber::new(2),
             ))),
-            Ready::None
+            Ready::default()
         );
         assert_eq!(
             processor.step(Event::Nullification(nullification(ViewNumber::new(3)))),
-            Ready::None
+            Ready::default()
         );
 
         assert_eq!(
             processor.step(Event::Propose(proposal_input(BlockId::new(50)))),
-            Ready::None
+            Ready::default()
         );
         assert_eq!(
             processor.step(Event::Nullification(nullification(ViewNumber::new(4)))),
-            Ready::None
+            Ready::default()
         );
 
-        let (id, _) =
-            persisted_proposal(processor.step(Event::Propose(proposal_input(BlockId::new(50)))));
-        assert_eq!(id, PersistenceId::new(1));
+        ready_proposal(processor.step(Event::Propose(proposal_input(BlockId::new(50)))));
     }
 }

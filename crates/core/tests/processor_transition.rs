@@ -2,24 +2,15 @@ mod common;
 
 use common::{committee, m_notarization};
 use minimmit_core::{
-    Block, BlockId, Committee, Event, Lifecycle, MNotarization, Nullification, Nullify,
-    PersistenceId, Processor, ProcessorError, Proposal, ProposalInput, Ready, TransactionId,
+    Block, BlockId, Committee, Event, MNotarization, NetworkReady, Nullification, Nullify,
+    Processor, ProcessorError, Proposal, ProposalInput, Ready, StorageReady, TransactionId,
     ValidatorId, ViewNumber, Vote,
 };
 
-#[derive(Clone)]
-enum TraceInput {
-    Event(Event),
-    Lifecycle(Lifecycle),
-}
-
-fn replay(processor: &mut Processor, inputs: Vec<TraceInput>) -> Vec<Ready> {
+fn replay(processor: &mut Processor, inputs: Vec<Event>) -> Vec<Ready> {
     inputs
         .into_iter()
-        .map(|input| match input {
-            TraceInput::Event(event) => processor.step(event),
-            TraceInput::Lifecycle(event) => processor.lifecycle(event),
-        })
+        .map(|event| processor.step(event))
         .collect()
 }
 
@@ -71,11 +62,15 @@ fn proposal_input(block_id: BlockId) -> ProposalInput {
     ProposalInput::new(block_id, [TransactionId::new(block_id.get())])
 }
 
-fn persisted_proposal(ready: Ready) -> (PersistenceId, Proposal) {
-    let Ready::Persist { id, proposal } = ready else {
-        panic!("expected persistence output, got {ready:?}");
-    };
-    (id, proposal)
+fn ready_proposal(ready: Ready) -> Proposal {
+    assert_eq!(ready.storage.len(), 1, "expected one storage output");
+    assert_eq!(ready.network.len(), 1, "expected one network output");
+
+    let StorageReady::PersistProposal(persisted) = &ready.storage[0];
+    let NetworkReady::BroadcastProposal(broadcast) = &ready.network[0];
+
+    assert_eq!(persisted, broadcast);
+    persisted.clone()
 }
 
 fn assert_view_1_leader_proposal(proposal: &Proposal) {
@@ -209,7 +204,7 @@ fn noop_event_returns_no_ready_output_and_preserves_state() {
 
     let ready = processor.step(Event::Noop);
 
-    assert_eq!(ready, Ready::None);
+    assert_eq!(ready, Ready::default());
     assert!(ready.is_empty());
     assert_eq!(processor, initial);
 }
@@ -221,7 +216,7 @@ fn proposal_event_records_proposal_without_ready_output_or_view_change() {
 
     let ready = processor.step(Event::Proposal(proposal));
 
-    assert_eq!(ready, Ready::None);
+    assert_eq!(ready, Ready::default());
     assert!(ready.is_empty());
     assert_eq!(processor.current_view(), ViewNumber::new(1));
     assert_eq!(
@@ -237,7 +232,7 @@ fn nullification_event_records_current_view_nullification_without_ready_output()
 
     let ready = processor.step(Event::Nullification(nullification));
 
-    assert_eq!(ready, Ready::None);
+    assert_eq!(ready, Ready::default());
     assert!(ready.is_empty());
     assert_eq!(processor.current_view(), ViewNumber::new(1));
     assert_eq!(observed_nullifications(&processor), [ViewNumber::new(1)]);
@@ -250,7 +245,7 @@ fn m_notarization_event_records_current_view_notarization_without_ready_output()
 
     let ready = processor.step(Event::MNotarization(notarization));
 
-    assert_eq!(ready, Ready::None);
+    assert_eq!(ready, Ready::default());
     assert!(ready.is_empty());
     assert_eq!(processor.current_view(), ViewNumber::new(1));
     assert_eq!(
@@ -269,14 +264,14 @@ fn observed_proposals_iterate_by_block_id_within_view() {
             BlockId::new(30),
             ViewNumber::new(2)
         ))),
-        Ready::None
+        Ready::default()
     );
     assert_eq!(
         processor.step(Event::Proposal(proposal(
             BlockId::new(20),
             ViewNumber::new(2)
         ))),
-        Ready::None
+        Ready::default()
     );
 
     assert_eq!(
@@ -295,21 +290,21 @@ fn observed_m_notarizations_iterate_by_view_then_block_id() {
             BlockId::new(30),
             ViewNumber::new(2)
         ))),
-        Ready::None
+        Ready::default()
     );
     assert_eq!(
         processor.step(Event::MNotarization(m_notarization(
             BlockId::new(40),
             ViewNumber::new(1)
         ))),
-        Ready::None
+        Ready::default()
     );
     assert_eq!(
         processor.step(Event::MNotarization(m_notarization(
             BlockId::new(20),
             ViewNumber::new(2)
         ))),
-        Ready::None
+        Ready::default()
     );
 
     assert_eq!(
@@ -330,8 +325,11 @@ fn conflicting_same_block_proposal_keeps_first_observed_proposal() {
     let conflicting =
         proposal_with_transaction(BlockId::new(20), ViewNumber::new(2), TransactionId::new(2));
 
-    assert_eq!(processor.step(Event::Proposal(first)), Ready::None);
-    assert_eq!(processor.step(Event::Proposal(conflicting)), Ready::None);
+    assert_eq!(processor.step(Event::Proposal(first)), Ready::default());
+    assert_eq!(
+        processor.step(Event::Proposal(conflicting)),
+        Ready::default()
+    );
 
     assert_eq!(
         observed_proposal_transactions(&processor, ViewNumber::new(2)),
@@ -346,11 +344,11 @@ fn same_block_m_notarization_is_recorded_once() {
 
     assert_eq!(
         processor.step(Event::MNotarization(notarization.clone())),
-        Ready::None
+        Ready::default()
     );
     assert_eq!(
         processor.step(Event::MNotarization(notarization)),
-        Ready::None
+        Ready::default()
     );
 
     assert_eq!(
@@ -366,11 +364,11 @@ fn same_view_nullification_is_recorded_once() {
 
     assert_eq!(
         processor.step(Event::Nullification(nullification.clone())),
-        Ready::None
+        Ready::default()
     );
     assert_eq!(
         processor.step(Event::Nullification(nullification)),
-        Ready::None
+        Ready::default()
     );
 
     assert_eq!(observed_nullifications(&processor), [ViewNumber::new(2)]);
@@ -385,18 +383,18 @@ fn future_observations_are_stored_without_advancing_view() {
             BlockId::new(40),
             ViewNumber::new(4)
         ))),
-        Ready::None
+        Ready::default()
     );
     assert_eq!(
         processor.step(Event::MNotarization(m_notarization(
             BlockId::new(30),
             ViewNumber::new(3)
         ))),
-        Ready::None
+        Ready::default()
     );
     assert_eq!(
         processor.step(Event::Nullification(nullification(ViewNumber::new(5)))),
-        Ready::None
+        Ready::default()
     );
 
     assert_eq!(processor.current_view(), ViewNumber::new(1));
@@ -429,17 +427,17 @@ fn artifacts_valid_for_another_committee_are_ignored() {
         processor.step(Event::MNotarization(
             notarization_valid_for_another_committee
         )),
-        Ready::None
+        Ready::default()
     );
     assert_eq!(
         processor.step(Event::Nullification(
             nullification_valid_for_another_committee
         )),
-        Ready::None
+        Ready::default()
     );
     assert_eq!(
         processor.step(Event::Proposal(proposal_with_parent_from_another_committee)),
-        Ready::None
+        Ready::default()
     );
 
     assert_eq!(observed_m_notarizations(&processor), []);
@@ -459,7 +457,7 @@ fn proposal_not_signed_by_view_leader_is_ignored() {
 
     assert_eq!(
         processor.step(Event::Proposal(wrong_leader_proposal)),
-        Ready::None
+        Ready::default()
     );
 
     assert_eq!(observed_proposal_blocks(&processor, ViewNumber::new(1)), []);
@@ -474,11 +472,11 @@ fn genesis_notarization_and_nullification_observations_are_ignored() {
             BlockId::GENESIS,
             ViewNumber::GENESIS
         ))),
-        Ready::None
+        Ready::default()
     );
     assert_eq!(
         processor.step(Event::Nullification(nullification(ViewNumber::GENESIS))),
-        Ready::None
+        Ready::default()
     );
 
     assert_eq!(observed_m_notarizations(&processor), []);
@@ -486,19 +484,13 @@ fn genesis_notarization_and_nullification_observations_are_ignored() {
 }
 
 #[test]
-fn leader_proposal_trigger_persists_before_recording_proposal() {
+fn leader_proposal_trigger_records_and_returns_storage_then_network_work() {
     let mut processor = leader_processor_for_view_1();
 
     let ready = processor.step(Event::Propose(proposal_input(BlockId::new(10))));
 
-    let (id, persisted) = persisted_proposal(ready);
-    assert_eq!(id, PersistenceId::new(1));
+    let persisted = ready_proposal(ready);
     assert_view_1_leader_proposal(&persisted);
-    assert_eq!(observed_proposal_blocks(&processor, ViewNumber::new(1)), []);
-
-    let ready = processor.lifecycle(Lifecycle::Persisted(PersistenceId::new(1)));
-
-    assert_eq!(ready, Ready::None);
     assert_eq!(
         observed_proposal_blocks(&processor, ViewNumber::new(1)),
         [BlockId::new(10)]
@@ -507,7 +499,7 @@ fn leader_proposal_trigger_persists_before_recording_proposal() {
         processor
             .observed_proposals(ViewNumber::new(1))
             .next()
-            .expect("acknowledged proposal is recorded"),
+            .expect("leader proposal is recorded immediately"),
         &persisted
     );
 }
@@ -518,7 +510,7 @@ fn non_leader_proposal_trigger_returns_no_ready_output() {
 
     let ready = processor.step(Event::Propose(proposal_input(BlockId::new(10))));
 
-    assert_eq!(ready, Ready::None);
+    assert_eq!(ready, Ready::default());
     assert!(ready.is_empty());
     assert_eq!(observed_proposal_blocks(&processor, ViewNumber::new(1)), []);
 }
@@ -527,14 +519,15 @@ fn non_leader_proposal_trigger_returns_no_ready_output() {
 fn leader_that_has_already_proposed_does_not_start_second_proposal() {
     let mut processor = leader_processor_for_view_1();
 
-    let (id, _) =
-        persisted_proposal(processor.step(Event::Propose(proposal_input(BlockId::new(10)))));
-    assert_eq!(id, PersistenceId::new(1));
+    ready_proposal(processor.step(Event::Propose(proposal_input(BlockId::new(10)))));
 
     let ready = processor.step(Event::Propose(proposal_input(BlockId::new(11))));
 
-    assert_eq!(ready, Ready::None);
-    assert_eq!(observed_proposal_blocks(&processor, ViewNumber::new(1)), []);
+    assert_eq!(ready, Ready::default());
+    assert_eq!(
+        observed_proposal_blocks(&processor, ViewNumber::new(1)),
+        [BlockId::new(10)]
+    );
 }
 
 #[test]
@@ -547,77 +540,39 @@ fn invalid_leader_proposal_input_does_not_record_proposed_state() {
 
     assert_eq!(
         processor.step(Event::Propose(duplicate_transactions)),
-        Ready::None
-    );
-    let (id, _) =
-        persisted_proposal(processor.step(Event::Propose(proposal_input(BlockId::new(10)))));
-    assert_eq!(id, PersistenceId::new(1));
-}
-
-#[test]
-fn unknown_and_duplicate_persistence_acknowledgements_do_not_record_proposal() {
-    let mut processor = leader_processor_for_view_1();
-
-    let (id, _) =
-        persisted_proposal(processor.step(Event::Propose(proposal_input(BlockId::new(10)))));
-    assert_eq!(id, PersistenceId::new(1));
-    assert_eq!(
-        processor.lifecycle(Lifecycle::Persisted(PersistenceId::new(2))),
-        Ready::None
+        Ready::default()
     );
     assert_eq!(observed_proposal_blocks(&processor, ViewNumber::new(1)), []);
 
-    let ready = processor.lifecycle(Lifecycle::Persisted(PersistenceId::new(1)));
-    assert_eq!(ready, Ready::None);
+    ready_proposal(processor.step(Event::Propose(proposal_input(BlockId::new(10)))));
     assert_eq!(
         observed_proposal_blocks(&processor, ViewNumber::new(1)),
         [BlockId::new(10)]
     );
-    assert_eq!(
-        processor.lifecycle(Lifecycle::Persisted(PersistenceId::new(1))),
-        Ready::None
-    );
 }
 
 #[test]
-fn persisted_lifecycle_without_pending_work_returns_no_ready_output() {
-    let mut processor = processor();
-    let initial = processor.clone();
-
-    let ready = processor.lifecycle(Lifecycle::Persisted(PersistenceId::new(7)));
-
-    assert_eq!(ready, Ready::None);
-    assert!(ready.is_empty());
-    assert_eq!(processor, initial);
-}
-
-#[test]
-fn persist_ready_output_is_not_empty() {
-    let ready = Ready::Persist {
-        id: PersistenceId::new(42),
-        proposal: proposal(BlockId::new(20), ViewNumber::new(2)),
+fn storage_and_network_ready_output_is_not_empty() {
+    let proposal = proposal(BlockId::new(20), ViewNumber::new(2));
+    let ready = Ready {
+        storage: vec![StorageReady::PersistProposal(proposal.clone())],
+        network: vec![NetworkReady::BroadcastProposal(proposal)],
     };
 
     assert!(!ready.is_empty());
 }
 
 #[test]
-fn same_event_and_lifecycle_sequence_replays_to_same_ready_outputs() {
+fn same_event_sequence_replays_to_same_ready_outputs() {
     let inputs = vec![
-        TraceInput::Event(Event::Noop),
-        TraceInput::Event(Event::Proposal(proposal(
-            BlockId::new(20),
-            ViewNumber::new(2),
-        ))),
-        TraceInput::Event(Event::MNotarization(m_notarization(
-            BlockId::new(10),
-            ViewNumber::new(1),
-        ))),
-        TraceInput::Lifecycle(Lifecycle::Persisted(PersistenceId::new(7))),
-        TraceInput::Event(Event::Nullification(nullification(ViewNumber::new(3)))),
+        Event::Noop,
+        Event::Propose(proposal_input(BlockId::new(10))),
+        Event::Proposal(proposal(BlockId::new(20), ViewNumber::new(2))),
+        Event::MNotarization(m_notarization(BlockId::new(10), ViewNumber::new(1))),
+        Event::Nullification(nullification(ViewNumber::new(3))),
     ];
-    let mut first = processor();
-    let mut second = processor();
+    let mut first = leader_processor_for_view_1();
+    let mut second = leader_processor_for_view_1();
 
     let first_outputs = replay(&mut first, inputs.clone());
     let second_outputs = replay(&mut second, inputs);
