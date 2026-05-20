@@ -27,13 +27,6 @@ fn processor() -> Processor {
     Processor::new(ValidatorId::new(0), committee()).expect("local validator is a member")
 }
 
-fn apply_event_without_ready_output(processor: &mut Processor, event: Event) {
-    let ready = processor.step(event);
-
-    assert_eq!(ready, Ready::None);
-    assert!(ready.is_empty());
-}
-
 fn observed_proposal_blocks(processor: &Processor, view: ViewNumber) -> Vec<BlockId> {
     processor
         .observed_proposals(view)
@@ -243,13 +236,20 @@ fn m_notarization_event_records_current_view_notarization_without_ready_output()
 fn observed_proposals_iterate_by_block_id_within_view() {
     let mut processor = processor();
 
-    apply_event_without_ready_output(
-        &mut processor,
-        Event::Proposal(proposal(BlockId::new(30), ViewNumber::new(2))),
+    // Insert out of order so the final assertion proves iteration order.
+    assert_eq!(
+        processor.step(Event::Proposal(proposal(
+            BlockId::new(30),
+            ViewNumber::new(2)
+        ))),
+        Ready::None
     );
-    apply_event_without_ready_output(
-        &mut processor,
-        Event::Proposal(proposal(BlockId::new(20), ViewNumber::new(2))),
+    assert_eq!(
+        processor.step(Event::Proposal(proposal(
+            BlockId::new(20),
+            ViewNumber::new(2)
+        ))),
+        Ready::None
     );
 
     assert_eq!(
@@ -262,17 +262,27 @@ fn observed_proposals_iterate_by_block_id_within_view() {
 fn observed_m_notarizations_iterate_by_view_then_block_id() {
     let mut processor = processor();
 
-    apply_event_without_ready_output(
-        &mut processor,
-        Event::MNotarization(m_notarization(BlockId::new(30), ViewNumber::new(2))),
+    // Insert out of order so the final assertion proves iteration order.
+    assert_eq!(
+        processor.step(Event::MNotarization(m_notarization(
+            BlockId::new(30),
+            ViewNumber::new(2)
+        ))),
+        Ready::None
     );
-    apply_event_without_ready_output(
-        &mut processor,
-        Event::MNotarization(m_notarization(BlockId::new(40), ViewNumber::new(1))),
+    assert_eq!(
+        processor.step(Event::MNotarization(m_notarization(
+            BlockId::new(40),
+            ViewNumber::new(1)
+        ))),
+        Ready::None
     );
-    apply_event_without_ready_output(
-        &mut processor,
-        Event::MNotarization(m_notarization(BlockId::new(20), ViewNumber::new(2))),
+    assert_eq!(
+        processor.step(Event::MNotarization(m_notarization(
+            BlockId::new(20),
+            ViewNumber::new(2)
+        ))),
+        Ready::None
     );
 
     assert_eq!(
@@ -293,8 +303,8 @@ fn conflicting_same_block_proposal_keeps_first_observed_proposal() {
     let conflicting =
         proposal_with_transaction(BlockId::new(20), ViewNumber::new(2), TransactionId::new(2));
 
-    apply_event_without_ready_output(&mut processor, Event::Proposal(first));
-    apply_event_without_ready_output(&mut processor, Event::Proposal(conflicting));
+    assert_eq!(processor.step(Event::Proposal(first)), Ready::None);
+    assert_eq!(processor.step(Event::Proposal(conflicting)), Ready::None);
 
     assert_eq!(
         observed_proposal_transactions(&processor, ViewNumber::new(2)),
@@ -307,8 +317,14 @@ fn same_block_m_notarization_is_recorded_once() {
     let mut processor = processor();
     let notarization = m_notarization(BlockId::new(20), ViewNumber::new(2));
 
-    apply_event_without_ready_output(&mut processor, Event::MNotarization(notarization.clone()));
-    apply_event_without_ready_output(&mut processor, Event::MNotarization(notarization));
+    assert_eq!(
+        processor.step(Event::MNotarization(notarization.clone())),
+        Ready::None
+    );
+    assert_eq!(
+        processor.step(Event::MNotarization(notarization)),
+        Ready::None
+    );
 
     assert_eq!(
         observed_m_notarizations(&processor),
@@ -321,8 +337,14 @@ fn same_view_nullification_is_recorded_once() {
     let mut processor = processor();
     let nullification = nullification(ViewNumber::new(2));
 
-    apply_event_without_ready_output(&mut processor, Event::Nullification(nullification.clone()));
-    apply_event_without_ready_output(&mut processor, Event::Nullification(nullification));
+    assert_eq!(
+        processor.step(Event::Nullification(nullification.clone())),
+        Ready::None
+    );
+    assert_eq!(
+        processor.step(Event::Nullification(nullification)),
+        Ready::None
+    );
 
     assert_eq!(observed_nullifications(&processor), [ViewNumber::new(2)]);
 }
@@ -331,17 +353,23 @@ fn same_view_nullification_is_recorded_once() {
 fn future_observations_are_stored_without_advancing_view() {
     let mut processor = processor();
 
-    apply_event_without_ready_output(
-        &mut processor,
-        Event::Proposal(proposal(BlockId::new(40), ViewNumber::new(4))),
+    assert_eq!(
+        processor.step(Event::Proposal(proposal(
+            BlockId::new(40),
+            ViewNumber::new(4)
+        ))),
+        Ready::None
     );
-    apply_event_without_ready_output(
-        &mut processor,
-        Event::MNotarization(m_notarization(BlockId::new(30), ViewNumber::new(3))),
+    assert_eq!(
+        processor.step(Event::MNotarization(m_notarization(
+            BlockId::new(30),
+            ViewNumber::new(3)
+        ))),
+        Ready::None
     );
-    apply_event_without_ready_output(
-        &mut processor,
-        Event::Nullification(nullification(ViewNumber::new(5))),
+    assert_eq!(
+        processor.step(Event::Nullification(nullification(ViewNumber::new(5)))),
+        Ready::None
     );
 
     assert_eq!(processor.current_view(), ViewNumber::new(1));
@@ -369,17 +397,22 @@ fn artifacts_valid_for_another_committee_are_ignored() {
             ViewNumber::new(1),
         );
 
-    apply_event_without_ready_output(
-        &mut processor,
-        Event::MNotarization(notarization_valid_for_another_committee),
+    // These artifacts are well-formed, but not for the processor's committee.
+    assert_eq!(
+        processor.step(Event::MNotarization(
+            notarization_valid_for_another_committee
+        )),
+        Ready::None
     );
-    apply_event_without_ready_output(
-        &mut processor,
-        Event::Nullification(nullification_valid_for_another_committee),
+    assert_eq!(
+        processor.step(Event::Nullification(
+            nullification_valid_for_another_committee
+        )),
+        Ready::None
     );
-    apply_event_without_ready_output(
-        &mut processor,
-        Event::Proposal(proposal_with_parent_from_another_committee),
+    assert_eq!(
+        processor.step(Event::Proposal(proposal_with_parent_from_another_committee)),
+        Ready::None
     );
 
     assert_eq!(observed_m_notarizations(&processor), []);
@@ -397,7 +430,10 @@ fn proposal_not_signed_by_view_leader_is_ignored() {
         ValidatorId::new(0),
     );
 
-    apply_event_without_ready_output(&mut processor, Event::Proposal(wrong_leader_proposal));
+    assert_eq!(
+        processor.step(Event::Proposal(wrong_leader_proposal)),
+        Ready::None
+    );
 
     assert_eq!(observed_proposal_blocks(&processor, ViewNumber::new(1)), []);
 }
@@ -406,13 +442,16 @@ fn proposal_not_signed_by_view_leader_is_ignored() {
 fn genesis_notarization_and_nullification_observations_are_ignored() {
     let mut processor = processor();
 
-    apply_event_without_ready_output(
-        &mut processor,
-        Event::MNotarization(m_notarization(BlockId::GENESIS, ViewNumber::GENESIS)),
+    assert_eq!(
+        processor.step(Event::MNotarization(m_notarization(
+            BlockId::GENESIS,
+            ViewNumber::GENESIS
+        ))),
+        Ready::None
     );
-    apply_event_without_ready_output(
-        &mut processor,
-        Event::Nullification(nullification(ViewNumber::GENESIS)),
+    assert_eq!(
+        processor.step(Event::Nullification(nullification(ViewNumber::GENESIS))),
+        Ready::None
     );
 
     assert_eq!(observed_m_notarizations(&processor), []);
