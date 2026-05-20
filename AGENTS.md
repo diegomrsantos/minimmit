@@ -20,6 +20,9 @@ literal, and easy to audit.
 - Before opening a pull request, after implementation and local verification,
   spawn a fresh review agent to review the implementation. Address any
   actionable findings, or record why they are deferred, before creating the PR.
+- After opening a pull request, do not amend commits or force-push that pull
+  request branch unless the user explicitly asks for a history rewrite. Add
+  follow-up commits to open pull request branches by default.
 - After opening a pull request, do not merge it until the user explicitly asks
   to merge that pull request. A request such as "merge this PR" is sufficient
   when the current PR is unambiguous. General requests to continue, or earlier
