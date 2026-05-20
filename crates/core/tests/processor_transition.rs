@@ -78,13 +78,6 @@ fn persisted_proposal(ready: Ready) -> (PersistenceId, Proposal) {
     (id, proposal)
 }
 
-fn released_proposal(ready: Ready) -> Proposal {
-    let Ready::Proposal { proposal } = ready else {
-        panic!("expected proposal output, got {ready:?}");
-    };
-    proposal
-}
-
 fn assert_view_1_leader_proposal(proposal: &Proposal) {
     assert_eq!(proposal.proposer(), ValidatorId::new(1));
     assert_eq!(proposal.block().id(), BlockId::new(10));
@@ -493,7 +486,7 @@ fn genesis_notarization_and_nullification_observations_are_ignored() {
 }
 
 #[test]
-fn leader_proposal_trigger_persists_before_releasing_proposal() {
+fn leader_proposal_trigger_persists_before_recording_proposal() {
     let mut processor = leader_processor_for_view_1();
 
     let ready = processor.step(Event::Propose(proposal_input(BlockId::new(10))));
@@ -504,12 +497,18 @@ fn leader_proposal_trigger_persists_before_releasing_proposal() {
     assert_eq!(observed_proposal_blocks(&processor, ViewNumber::new(1)), []);
 
     let ready = processor.lifecycle(Lifecycle::Persisted(PersistenceId::new(1)));
-    let proposal = released_proposal(ready);
 
-    assert_eq!(proposal, persisted);
+    assert_eq!(ready, Ready::None);
     assert_eq!(
         observed_proposal_blocks(&processor, ViewNumber::new(1)),
         [BlockId::new(10)]
+    );
+    assert_eq!(
+        processor
+            .observed_proposals(ViewNumber::new(1))
+            .next()
+            .expect("acknowledged proposal is recorded"),
+        &persisted
     );
 }
 
@@ -556,7 +555,7 @@ fn invalid_leader_proposal_input_does_not_record_proposed_state() {
 }
 
 #[test]
-fn unknown_and_duplicate_persistence_acknowledgements_do_not_release_proposal() {
+fn unknown_and_duplicate_persistence_acknowledgements_do_not_record_proposal() {
     let mut processor = leader_processor_for_view_1();
 
     let (id, _) =
@@ -566,9 +565,14 @@ fn unknown_and_duplicate_persistence_acknowledgements_do_not_release_proposal() 
         processor.lifecycle(Lifecycle::Persisted(PersistenceId::new(2))),
         Ready::None
     );
+    assert_eq!(observed_proposal_blocks(&processor, ViewNumber::new(1)), []);
 
     let ready = processor.lifecycle(Lifecycle::Persisted(PersistenceId::new(1)));
-    assert!(matches!(ready, Ready::Proposal { .. }));
+    assert_eq!(ready, Ready::None);
+    assert_eq!(
+        observed_proposal_blocks(&processor, ViewNumber::new(1)),
+        [BlockId::new(10)]
+    );
     assert_eq!(
         processor.lifecycle(Lifecycle::Persisted(PersistenceId::new(1))),
         Ready::None

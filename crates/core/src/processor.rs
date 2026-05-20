@@ -105,8 +105,8 @@ impl Processor {
     /// Artifact events record local protocol evidence that is valid for this
     /// processor's committee without implying any downstream vote, forwarding,
     /// view advancement, or persistence behavior. A local proposal trigger is
-    /// persistence-gated: it emits persistence work before the proposal itself
-    /// can be released through [`Lifecycle::Persisted`].
+    /// persistence-gated: it emits persistence work before the shell may
+    /// release the proposal.
     #[must_use]
     pub fn step(&mut self, event: Event) -> Ready {
         match event {
@@ -134,7 +134,7 @@ impl Processor {
     #[must_use]
     pub fn lifecycle(&mut self, event: Lifecycle) -> Ready {
         match event {
-            Lifecycle::Persisted(id) => self.release_persisted(id),
+            Lifecycle::Persisted(id) => self.acknowledge_persisted(id),
         }
     }
 
@@ -165,8 +165,8 @@ impl Processor {
         }
     }
 
-    /// Releases proposal output after the matching persistence acknowledgement.
-    fn release_persisted(&mut self, id: PersistenceId) -> Ready {
+    /// Marks persisted proposal work complete after the matching acknowledgement.
+    fn acknowledge_persisted(&mut self, id: PersistenceId) -> Ready {
         let Some(pending) = self.pending_proposal.take() else {
             return Ready::None;
         };
@@ -176,11 +176,9 @@ impl Processor {
             return Ready::None;
         }
 
-        self.record_proposal(pending.proposal.clone());
+        self.record_proposal(pending.proposal);
 
-        Ready::Proposal {
-            proposal: pending.proposal,
-        }
+        Ready::None
     }
 
     /// Allocates the next persistence id without wrapping.
@@ -191,7 +189,7 @@ impl Processor {
         Some(id)
     }
 
-    /// Builds the proposal that the local leader will release after persistence.
+    /// Builds the proposal that the local leader asks the shell to persist.
     fn build_proposal(&self, input: ProposalInput) -> Option<Proposal> {
         let parent = select_parent(self.observed_m_notarizations(), self.current_view).ok()?;
         let parent_notarization = self.parent_notarization(parent.block(), parent.view())?;
@@ -441,12 +439,7 @@ pub enum Ready {
     Persist {
         /// Persistence correlation id the shell reports back after completion.
         id: PersistenceId,
-        /// Proposal artifact the shell should persist before release.
-        proposal: Proposal,
-    },
-    /// The shell can release the persisted local proposal.
-    Proposal {
-        /// Proposal artifact ready for shell delivery.
+        /// Proposal artifact the shell should persist before releasing it.
         proposal: Proposal,
     },
 }
@@ -560,13 +553,6 @@ mod tests {
         (id, proposal)
     }
 
-    fn released_proposal(ready: Ready) -> crate::Proposal {
-        let Ready::Proposal { proposal } = ready else {
-            panic!("expected proposal output, got {ready:?}");
-        };
-        proposal
-    }
-
     #[test]
     fn leader_proposal_uses_selected_non_genesis_parent_and_skipped_nullifications() {
         let mut processor = processor_at_view(ValidatorId::new(5), ViewNumber::new(5));
@@ -602,10 +588,16 @@ mod tests {
         let (id, persisted) =
             persisted_proposal(processor.step(Event::Propose(proposal_input(BlockId::new(50)))));
         assert_eq!(id, PersistenceId::new(1));
-        let proposal =
-            released_proposal(processor.lifecycle(Lifecycle::Persisted(PersistenceId::new(1))));
+        assert_eq!(
+            processor.lifecycle(Lifecycle::Persisted(PersistenceId::new(1))),
+            Ready::None
+        );
 
-        assert_eq!(proposal, persisted);
+        let proposal = processor
+            .observed_proposals(ViewNumber::new(5))
+            .next()
+            .expect("acknowledged proposal is recorded");
+        assert_eq!(proposal, &persisted);
         assert_eq!(proposal.block().parent(), BlockId::new(20));
         assert_eq!(proposal.parent_notarization().block(), BlockId::new(20));
         assert_eq!(proposal.parent_notarization().view(), ViewNumber::new(3));

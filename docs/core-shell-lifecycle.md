@@ -33,14 +33,15 @@ Protocol input
   -> Ready::Persist { id, proposal }
   -> shell commits durable storage
   -> Lifecycle::Persisted(id)
-  -> Ready(dependent protocol output)
+  -> core records durable completion
+  -> shell releases the persisted artifact
 ```
 
 The current processor uses this boundary for local leader proposals.
 `Event::Propose` emits `Ready::Persist` with the proposal payload the shell
-must make durable, and the matching `Lifecycle::Persisted` releases the
-dependent proposal output. Unknown, duplicate, or stale persistence
-acknowledgements remain deterministic no-ops.
+must make durable before releasing it. The matching `Lifecycle::Persisted`
+records durable completion inside the core and returns `Ready::None`. Unknown,
+duplicate, or stale persistence acknowledgements remain deterministic no-ops.
 
 The core must not secretly assume that a storage command completed. The shell
 must not hide completion of a protocol-relevant persistence request from the
@@ -92,8 +93,9 @@ Hard outputs are shell actions whose completion affects later protocol behavior.
 Persistence is the first hard output class Minimmit should model. A
 persist-before-send rule is the main example: if the core decides to vote,
 nullify, propose, or advance in a way that must survive restart before being
-broadcast, it should emit persistence first and wait for the matching lifecycle
-completion before emitting the dependent network output.
+broadcast, it should emit persistence first and require matching lifecycle
+completion before the shell releases the dependent work or the core treats it
+as durable.
 
 Soft outputs are shell actions that do not by themselves become durable
 protocol facts. Network sends, timer scheduling, metrics, and logs can usually
@@ -111,8 +113,8 @@ A persistence-sensitive transition should look like this:
      storage: persist the protocol projection or artifact
 3. Shell commits the DB transaction.
 4. Shell feeds Lifecycle::Persisted(42).
-5. Core moves the pending transition into durable state.
-6. Core emits dependent outputs, such as broadcasts or timer work.
+5. Core moves the pending transition into durable state and returns Ready::None.
+6. Shell may release the persisted artifact.
 ```
 
 If persistence fails, the first implementation may stop at an explicit error or
@@ -152,16 +154,16 @@ visible to the protocol logic that depends on it.
 Tests should drive the same boundary production will use:
 
 ```text
-protocol input -> ready persistence output -> lifecycle input -> dependent output
+protocol input -> ready persistence output -> lifecycle input -> durable completion
 ```
 
 Useful tests assert Minimmit-owned behavior:
 
 - hard outputs are persistence-id-correlated
-- dependent outputs are withheld until the matching persistence lifecycle input
+- pending durable state changes only on the matching persistence lifecycle input
 - restarted and uninterrupted cores behave the same for the supported
   projection
-- unrelated inputs do not accidentally release persistence-gated behavior
+- unrelated inputs do not accidentally complete persistence-gated behavior
 
 Avoid tests that inspect DB mechanics, async task queues, or private shell
 buffers from `minimmit-core`. Those belong in shell, store, sync, or simulation
