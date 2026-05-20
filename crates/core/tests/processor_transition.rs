@@ -79,6 +79,10 @@ fn observed_nullification_signers(processor: &Processor) -> Vec<Vec<ValidatorId>
         .collect()
 }
 
+fn validator_ids(signers: [u64; 3]) -> Vec<ValidatorId> {
+    signers.map(ValidatorId::new).to_vec()
+}
+
 fn proposal(block_id: BlockId, view: ViewNumber) -> Proposal {
     proposal_with_transaction(block_id, view, TransactionId::new(block_id.get()))
 }
@@ -331,12 +335,22 @@ fn conflicting_same_block_proposal_keeps_first_observed_proposal() {
 #[test]
 fn same_key_evidence_keeps_lexicographically_least_signer_set() {
     let mut processor = processor();
-    let higher_m_notarization =
-        m_notarization_with_signers(BlockId::new(20), ViewNumber::new(2), [3, 4, 5]);
-    let lower_m_notarization =
-        m_notarization_with_signers(BlockId::new(20), ViewNumber::new(2), [0, 1, 2]);
-    let higher_nullification = nullification_with_signers(ViewNumber::new(2), [3, 4, 5]);
-    let lower_nullification = nullification_with_signers(ViewNumber::new(2), [0, 1, 2]);
+    let lexicographically_later_signers = [3, 4, 5];
+    let lexicographically_least_signers = [0, 1, 2];
+    let higher_m_notarization = m_notarization_with_signers(
+        BlockId::new(20),
+        ViewNumber::new(2),
+        lexicographically_later_signers,
+    );
+    let lower_m_notarization = m_notarization_with_signers(
+        BlockId::new(20),
+        ViewNumber::new(2),
+        lexicographically_least_signers,
+    );
+    let higher_nullification =
+        nullification_with_signers(ViewNumber::new(2), lexicographically_later_signers);
+    let lower_nullification =
+        nullification_with_signers(ViewNumber::new(2), lexicographically_least_signers);
 
     step_no_ready(&mut processor, Event::MNotarization(higher_m_notarization));
     step_no_ready(&mut processor, Event::MNotarization(lower_m_notarization));
@@ -345,19 +359,11 @@ fn same_key_evidence_keeps_lexicographically_least_signer_set() {
 
     assert_eq!(
         observed_m_notarization_signers(&processor),
-        [vec![
-            ValidatorId::new(0),
-            ValidatorId::new(1),
-            ValidatorId::new(2)
-        ]]
+        [validator_ids(lexicographically_least_signers)]
     );
     assert_eq!(
         observed_nullification_signers(&processor),
-        [vec![
-            ValidatorId::new(0),
-            ValidatorId::new(1),
-            ValidatorId::new(2)
-        ]]
+        [validator_ids(lexicographically_least_signers)]
     );
 }
 
