@@ -15,7 +15,7 @@ multi-replica stories, or selected post-state assertions.
 
 Also use `minimmit-protocol-tdd` for paper claims and evidence. Read
 `docs/testing.md` when you need the source-backed doctrine or guidance for
-later replay, property, model-conformance, or search layers.
+test readability, replay, property, model-conformance, or search layers.
 
 ## Preferred Shape
 

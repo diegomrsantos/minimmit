@@ -37,10 +37,28 @@ Do not add, move, or preserve tests whose failure would primarily report a
 change in language, library, dependency, derived, or otherwise mechanical
 behavior rather than a change in Minimmit behavior.
 
-Test helpers should name meaningful domain setup, not scalar construction.
-Use direct public constructors such as `BlockId::new`, `ViewNumber::new`,
-`ValidatorId::new`, and `TransactionId::new` at the call site instead of
-wrapping them in test-only helpers.
+## Readable Tests
+
+Tests should read as concrete protocol stories. Keep the relevant setup,
+transition, and assertion visible when they are short.
+
+Use helpers for meaningful domain fixtures that would otherwise distract from
+the behavior under test. Do not wrap scalar construction or simple assertions
+in test-only helpers; use direct public constructors such as `BlockId::new`,
+`ViewNumber::new`, `ValidatorId::new`, and `TransactionId::new` at the call
+site.
+
+Names should spell out the protocol relation that matters. Avoid vague relative
+or policy-heavy names when a simpler name can identify membership, view,
+parent, signer, persistence, or ordering relationships directly. Literal
+expected values should be understandable from the test name, local variables,
+or a short intent comment; unexplained lists of numbers are not useful
+evidence.
+
+Comments in tests should explain protocol intent, fixture relationships,
+deliberate ordering, or regression risk that names and assertions do not make
+obvious. Prefer clearer names or structure first, and do not add comments that
+only restate assertions or obvious control flow.
 
 ## Test Layers
 
