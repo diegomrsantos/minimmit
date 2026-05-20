@@ -1,10 +1,4 @@
-use std::{
-    collections::{
-        btree_map::Entry::{Occupied, Vacant},
-        BTreeMap,
-    },
-    fmt,
-};
+use std::{collections::BTreeMap, fmt};
 
 use crate::{
     validate_proposal, BlockId, Committee, MNotarization, Nullification, Nullify, Proposal,
@@ -155,21 +149,11 @@ impl Processor {
         }
 
         let block = notarization.block();
-        match self
-            .observed_m_notarizations
+        self.observed_m_notarizations
             .entry(view)
             .or_default()
             .entry(block)
-        {
-            Vacant(entry) => {
-                entry.insert(notarization);
-            }
-            Occupied(mut entry) => {
-                if signer_set_is_less(notarization.signers(), entry.get().signers()) {
-                    entry.insert(notarization);
-                }
-            }
-        }
+            .or_insert(notarization);
     }
 
     fn record_nullification(&mut self, nullification: Nullification) {
@@ -181,16 +165,9 @@ impl Processor {
             return;
         }
 
-        match self.observed_nullifications.entry(view) {
-            Vacant(entry) => {
-                entry.insert(nullification);
-            }
-            Occupied(mut entry) => {
-                if signer_set_is_less(nullification.signers(), entry.get().signers()) {
-                    entry.insert(nullification);
-                }
-            }
-        }
+        self.observed_nullifications
+            .entry(view)
+            .or_insert(nullification);
     }
 
     fn valid_proposal_observation(&self, proposal: &Proposal) -> bool {
@@ -333,12 +310,3 @@ impl fmt::Display for ProcessorError {
 }
 
 impl std::error::Error for ProcessorError {}
-
-fn signer_set_is_less(
-    candidate: impl Iterator<Item = ValidatorId>,
-    existing: impl Iterator<Item = ValidatorId>,
-) -> bool {
-    // Evidence stores signers in deterministic set order, so iterator
-    // comparison selects the lexicographically least proof for the same key.
-    candidate.cmp(existing).is_lt()
-}

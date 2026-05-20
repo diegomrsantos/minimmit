@@ -65,24 +65,6 @@ fn observed_nullifications(processor: &Processor) -> Vec<ViewNumber> {
         .collect()
 }
 
-fn observed_m_notarization_signers(processor: &Processor) -> Vec<Vec<ValidatorId>> {
-    processor
-        .observed_m_notarizations()
-        .map(|notarization| notarization.signers().collect())
-        .collect()
-}
-
-fn observed_nullification_signers(processor: &Processor) -> Vec<Vec<ValidatorId>> {
-    processor
-        .observed_nullifications()
-        .map(|nullification| nullification.signers().collect())
-        .collect()
-}
-
-fn validator_ids(signers: [u64; 3]) -> Vec<ValidatorId> {
-    signers.map(ValidatorId::new).to_vec()
-}
-
 fn proposal(block_id: BlockId, view: ViewNumber) -> Proposal {
     proposal_with_transaction(block_id, view, TransactionId::new(block_id.get()))
 }
@@ -127,18 +109,6 @@ fn nullification_with_signers(view: ViewNumber, signers: [u64; 3]) -> Nullificat
         signers.map(|signer| Nullify::new(ValidatorId::new(signer), view)),
     )
     .expect("nullify messages form a nullification")
-}
-
-fn m_notarization_with_signers(
-    block_id: BlockId,
-    view: ViewNumber,
-    signers: [u64; 3],
-) -> MNotarization {
-    MNotarization::from_votes(
-        &committee(),
-        signers.map(|signer| Vote::new(ValidatorId::new(signer), block_id, view)),
-    )
-    .expect("votes form an M-notarization")
 }
 
 fn other_committee() -> Committee {
@@ -333,38 +303,28 @@ fn conflicting_same_block_proposal_keeps_first_observed_proposal() {
 }
 
 #[test]
-fn same_key_evidence_keeps_lexicographically_least_signer_set() {
+fn same_block_m_notarization_is_recorded_once() {
     let mut processor = processor();
-    let lexicographically_later_signers = [3, 4, 5];
-    let lexicographically_least_signers = [0, 1, 2];
-    let higher_m_notarization = m_notarization_with_signers(
-        BlockId::new(20),
-        ViewNumber::new(2),
-        lexicographically_later_signers,
-    );
-    let lower_m_notarization = m_notarization_with_signers(
-        BlockId::new(20),
-        ViewNumber::new(2),
-        lexicographically_least_signers,
-    );
-    let higher_nullification =
-        nullification_with_signers(ViewNumber::new(2), lexicographically_later_signers);
-    let lower_nullification =
-        nullification_with_signers(ViewNumber::new(2), lexicographically_least_signers);
+    let notarization = m_notarization(BlockId::new(20), ViewNumber::new(2));
 
-    step_no_ready(&mut processor, Event::MNotarization(higher_m_notarization));
-    step_no_ready(&mut processor, Event::MNotarization(lower_m_notarization));
-    step_no_ready(&mut processor, Event::Nullification(higher_nullification));
-    step_no_ready(&mut processor, Event::Nullification(lower_nullification));
+    step_no_ready(&mut processor, Event::MNotarization(notarization.clone()));
+    step_no_ready(&mut processor, Event::MNotarization(notarization));
 
     assert_eq!(
-        observed_m_notarization_signers(&processor),
-        [validator_ids(lexicographically_least_signers)]
+        observed_m_notarizations(&processor),
+        [(ViewNumber::new(2), BlockId::new(20))]
     );
-    assert_eq!(
-        observed_nullification_signers(&processor),
-        [validator_ids(lexicographically_least_signers)]
-    );
+}
+
+#[test]
+fn same_view_nullification_is_recorded_once() {
+    let mut processor = processor();
+    let nullification = nullification(ViewNumber::new(2));
+
+    step_no_ready(&mut processor, Event::Nullification(nullification.clone()));
+    step_no_ready(&mut processor, Event::Nullification(nullification));
+
+    assert_eq!(observed_nullifications(&processor), [ViewNumber::new(2)]);
 }
 
 #[test]
