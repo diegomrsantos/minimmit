@@ -6,6 +6,7 @@
 
 - One concern:
 - Out of scope:
+- Dedicated worktree from updated `main`:
 
 ## Checks
 

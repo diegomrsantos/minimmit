@@ -8,9 +8,9 @@ literal, and easy to audit.
 - After the bootstrap commit, do not commit directly to protected `main`.
 - Use a branch and pull request for every code change.
 - Before creating a new work branch, fetch the latest `origin/main`, update the
-  local base branch from it, and create the work branch only from that updated
-  base. Do not branch from stale `main` or from an old feature branch unless
-  the user explicitly asks for that base.
+  local `main` branch from it, and create a dedicated worktree and branch only
+  from that updated base. Do not branch from stale `main` or from an old
+  feature branch unless the user explicitly asks for that base.
 - Do not prefix branch names or pull request titles with `codex` or `[codex]`.
 - Use semantic commit messages for commits and pull request titles, such as
   `docs: expand README motivation`, `fix: correct threshold counting`, or
@@ -35,6 +35,8 @@ literal, and easy to audit.
   when the current PR is unambiguous. General requests to continue, or earlier
   merge approval for another pull request, do not authorize merging a later
   pull request.
+- After a pull request is merged or abandoned, remove its dedicated worktree and
+  delete its local work branch.
 - When creating or refining issues, follow `docs/issues.md`; use issue
   templates as forms, not as the canonical policy.
 - When creating or refining milestones, follow `docs/milestones.md`.
