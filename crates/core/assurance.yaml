@@ -10,6 +10,10 @@ source:
     id: minimmit-paper
     title: "Minimmit"
     arxiv: "2508.10862"
+  commonware:
+    announcement: "https://commonware.xyz/blogs/minimmit"
+    specification: "https://github.com/commonwarexyz/monorepo/blob/main/pipeline/minimmit/minimmit.md"
+    relation: "Protocol provenance and licensing signal; this crate is an independent implementation."
 
 scope:
   includes:
