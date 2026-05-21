@@ -483,83 +483,113 @@ mod tests {
         persisted.clone()
     }
 
-    #[test]
-    fn leader_proposal_uses_selected_non_genesis_parent_and_skipped_nullifications() {
-        let mut processor = processor_at_view(ValidatorId::new(5), ViewNumber::new(5));
+    fn observe_m_notarizations<const N: usize>(
+        processor: &mut Processor,
+        notarizations: [(BlockId, ViewNumber); N],
+    ) {
+        for (block, view) in notarizations {
+            assert_eq!(
+                processor.step(Event::MNotarization(m_notarization(block, view))),
+                Ready::default(),
+                "observing an M-notarization should not emit ready work"
+            );
+        }
+    }
 
-        // Current-view advancement is implemented later; seed the private view
-        // so this production branch has evidence before advancement reaches it.
-        assert_eq!(
-            processor.step(Event::MNotarization(m_notarization(
-                BlockId::new(30),
-                ViewNumber::new(3),
-            ))),
-            Ready::default()
-        );
-        assert_eq!(
-            processor.step(Event::MNotarization(m_notarization(
-                BlockId::new(20),
-                ViewNumber::new(3),
-            ))),
-            Ready::default()
-        );
-        assert_eq!(
-            processor.step(Event::MNotarization(m_notarization(
-                BlockId::new(10),
-                ViewNumber::new(2),
-            ))),
-            Ready::default()
-        );
-        assert_eq!(
-            processor.step(Event::Nullification(nullification(ViewNumber::new(4)))),
-            Ready::default()
-        );
+    fn observe_nullifications<const N: usize>(
+        processor: &mut Processor,
+        nullifications: [ViewNumber; N],
+    ) {
+        for view in nullifications {
+            assert_eq!(
+                processor.step(Event::Nullification(nullification(view))),
+                Ready::default(),
+                "observing a nullification should not emit ready work"
+            );
+        }
+    }
 
-        let persisted =
-            ready_proposal(processor.step(Event::Propose(proposal_input(BlockId::new(50)))));
-
-        let proposal = processor
-            .observed_proposals(ViewNumber::new(5))
+    fn observed_proposal(processor: &Processor, view: ViewNumber) -> &crate::Proposal {
+        processor
+            .observed_proposals(view)
             .next()
-            .expect("leader proposal is recorded immediately");
-        assert_eq!(proposal, &persisted);
-        assert_eq!(proposal.block().parent(), BlockId::new(20));
-        assert_eq!(proposal.parent_notarization().block(), BlockId::new(20));
-        assert_eq!(proposal.parent_notarization().view(), ViewNumber::new(3));
+            .expect("leader proposal is recorded immediately")
+    }
+
+    fn assert_proposal_extends_parent(
+        proposal: &crate::Proposal,
+        parent: BlockId,
+        parent_view: ViewNumber,
+        skipped_views: &[ViewNumber],
+    ) {
+        assert_eq!(proposal.block().parent(), parent);
+        assert_eq!(
+            (
+                proposal.parent_notarization().block(),
+                proposal.parent_notarization().view(),
+            ),
+            (parent, parent_view)
+        );
         assert_eq!(
             proposal
                 .nullifications()
                 .map(Nullification::view)
                 .collect::<Vec<_>>(),
-            [ViewNumber::new(4)]
+            skipped_views
+        );
+    }
+
+    #[test]
+    fn leader_proposal_uses_selected_non_genesis_parent_and_skipped_nullifications() {
+        // Given
+        let mut processor = processor_at_view(ValidatorId::new(5), ViewNumber::new(5));
+        // Current-view advancement is implemented later; seed the private view
+        // so this production branch has evidence before advancement reaches it.
+        observe_m_notarizations(
+            &mut processor,
+            [
+                (BlockId::new(30), ViewNumber::new(3)),
+                (BlockId::new(20), ViewNumber::new(3)),
+                (BlockId::new(10), ViewNumber::new(2)),
+            ],
+        );
+        observe_nullifications(&mut processor, [ViewNumber::new(4)]);
+
+        // When
+        let persisted =
+            ready_proposal(processor.step(Event::Propose(proposal_input(BlockId::new(50)))));
+
+        // Then
+        let proposal = observed_proposal(&processor, ViewNumber::new(5));
+        assert_eq!(proposal, &persisted);
+        assert_proposal_extends_parent(
+            proposal,
+            BlockId::new(20),
+            ViewNumber::new(3),
+            &[ViewNumber::new(4)],
         );
     }
 
     #[test]
     fn leader_proposal_waits_for_all_skipped_view_nullifications() {
+        // Given
         let mut processor = processor_at_view(ValidatorId::new(5), ViewNumber::new(5));
+        observe_m_notarizations(&mut processor, [(BlockId::new(20), ViewNumber::new(2))]);
+        observe_nullifications(&mut processor, [ViewNumber::new(3)]);
 
-        assert_eq!(
-            processor.step(Event::MNotarization(m_notarization(
-                BlockId::new(20),
-                ViewNumber::new(2),
-            ))),
-            Ready::default()
-        );
-        assert_eq!(
-            processor.step(Event::Nullification(nullification(ViewNumber::new(3)))),
-            Ready::default()
-        );
+        // When
+        let ready = processor.step(Event::Propose(proposal_input(BlockId::new(50))));
 
-        assert_eq!(
-            processor.step(Event::Propose(proposal_input(BlockId::new(50)))),
-            Ready::default()
-        );
-        assert_eq!(
-            processor.step(Event::Nullification(nullification(ViewNumber::new(4)))),
-            Ready::default()
-        );
+        // Then
+        assert_eq!(ready, Ready::default());
 
-        ready_proposal(processor.step(Event::Propose(proposal_input(BlockId::new(50)))));
+        // Given
+        observe_nullifications(&mut processor, [ViewNumber::new(4)]);
+
+        // When
+        let ready = processor.step(Event::Propose(proposal_input(BlockId::new(50))));
+
+        // Then
+        ready_proposal(ready);
     }
 }

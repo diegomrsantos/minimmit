@@ -42,6 +42,12 @@ behavior rather than a change in Minimmit behavior.
 Tests should read as concrete protocol stories. Keep the relevant setup,
 transition, and assertion visible when they are short.
 
+Structure non-trivial input-step and scenario tests as `Given` / `When` /
+`Then`, the behavior-focused form of Arrange / Act / Assert. Use section
+comments when the phases are not obvious from blank lines alone. `Given` should
+set up concrete protocol state, `When` should drive the event or transition
+under test, and `Then` should assert semantic output or selected post-state.
+
 Use helpers for meaningful domain fixtures that would otherwise distract from
 the behavior under test. Do not wrap scalar construction or simple assertions
 in test-only helpers; use direct public constructors such as `BlockId::new`,
