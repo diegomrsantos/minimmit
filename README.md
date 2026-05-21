@@ -1,8 +1,9 @@
 # Minimmit
 
-Minimmit is an experimental implementation of the Minimmit BFT protocol. It is
-not production-ready today; the current focus is deterministic core behavior
-and explicit assurance before production node integration.
+Minimmit is an independent, unofficial experimental implementation of the
+Minimmit BFT protocol. It is not an official Commonware project and is not
+production-ready today; the current focus is deterministic core behavior and
+explicit assurance before production node integration.
 
 ## What Is Minimmit?
 
@@ -89,3 +90,21 @@ project guidance lives in [`docs/assurance/`](docs/assurance/),
 [`docs/core-shell-boundary.md`](docs/core-shell-boundary.md),
 [`docs/dependencies.md`](docs/dependencies.md),
 [`docs/releases.md`](docs/releases.md), and [`AGENTS.md`](AGENTS.md).
+
+## License And Attribution
+
+This implementation is licensed under either of:
+
+- Apache License, Version 2.0 ([`LICENSE-APACHE`](LICENSE-APACHE))
+- MIT license ([`LICENSE-MIT`](LICENSE-MIT))
+
+at your option.
+
+The protocol source is
+[Minimmit: Fast Finality with Even Faster Blocks](https://arxiv.org/abs/2508.10862)
+and Commonware's published
+[Minimmit specification](https://github.com/commonwarexyz/monorepo/blob/main/pipeline/minimmit/minimmit.md).
+The arXiv paper is distributed under CC BY 4.0, and Commonware's
+[Minimmit announcement](https://commonware.xyz/blogs/minimmit) states that
+Minimmit is released under both MIT and Apache-2.0. This repository follows
+that licensing signal while remaining an independent implementation.
