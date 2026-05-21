@@ -22,9 +22,9 @@ scenario tests should drive that boundary directly.
 
 When a core output depends on shell work becoming durable before release, tests
 should assert the protocol-visible ready outputs and the shell ordering
-contract. Add lifecycle input only when shell completion must change later core
-behavior. See
-[Core And Shell Lifecycle](core-shell-lifecycle.md) for the lifecycle boundary.
+contract. Add a core-visible shell completion input only when completion must
+change later core behavior. See
+[Core And Shell Boundary](core-shell-boundary.md) for the core/shell boundary.
 
 When sync, store, simulation, or shell work models overload, tests should assert
 bounded degradation through deterministic observations. See
@@ -65,8 +65,8 @@ only restate assertions or obvious control flow.
 - Small claim tests are the default. They cover thresholds, typed
   construction, duplicate rejection, distinct sender counting, deterministic
   ordering, and precise errors.
-- Input-step tests should drive one explicit protocol event or lifecycle input
-  through the core and inspect the returned protocol-visible output.
+- Input-step tests should drive one explicit protocol event through the core and
+  inspect the returned protocol-visible output.
 - Scenario tests should feed a short ordered input trace, record step outcomes,
   and assert a named protocol story.
 - Overload scenario tests should assert public deterministic observations such
@@ -123,7 +123,7 @@ Unreplayable failures are not acceptable evidence.
 Start replay and search work with short explicit traces. Move next to seeded
 shuffle or small exhaustive event bags. Richer scheduling, broad simulation,
 chaos, Antithesis integration, Jepsen-style external testing, and VOPR-style
-infrastructure should wait until local `Event`/`Lifecycle` -> `Core` -> `Ready`
+infrastructure should wait until local `Event` -> `Processor` -> `Ready`
 scenarios prove the need.
 
 For Quint or model conformance, map named model actions into Rust events at a
@@ -136,8 +136,8 @@ evidence unless the trace drives Rust behavior.
 - Keep `minimmit-core` deterministic and free of hidden IO, wall-clock time,
   randomness, async scheduling, networking, storage engines, and production
   shell behavior.
-- Represent shell ordering through explicit ready outputs. Add lifecycle input
-  only when shell completion must change later core behavior.
+- Represent shell ordering through explicit ready outputs. Add core-visible
+  shell completion input only when completion must change later core behavior.
 - Assert persist-before-broadcast behavior through protocol-visible outputs,
   not DB mechanics or shell queues.
 - Assert bounded degradation through explicit observations when overload policy
@@ -153,8 +153,8 @@ evidence unless the trace drives Rust behavior.
 
 ## Defer
 
-Do not add these until the local `Event`/`Lifecycle` -> `Core` -> `Ready` shape
-and scenario tests justify them:
+Do not add these until the local `Event` -> `Processor` -> `Ready` shape and
+scenario tests justify them:
 
 - broad simulation or chaos framework
 - Antithesis integration

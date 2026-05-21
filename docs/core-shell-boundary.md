@@ -1,4 +1,4 @@
-# Core And Shell Lifecycle
+# Core And Shell Boundary
 
 This document describes how `minimmit-core` communicates shell-owned work
 without owning a database, runtime, network, or storage engine.
@@ -12,8 +12,7 @@ explicit work for the shell to perform.
 The core boundary is event-driven:
 
 ```text
-Event     -> Processor -> Ready
-Lifecycle -> Processor -> Ready
+Event -> Processor -> Ready
 ```
 
 `Event` inputs represent protocol artifacts, local triggers, and observations.
@@ -26,10 +25,6 @@ Ready {
   network: [NetworkReady],
 }
 ```
-
-`Lifecycle` is the reserved boundary for shell completion feedback that must
-re-enter protocol state. It is intentionally empty today. Add a lifecycle
-variant only when later core behavior truly depends on shell completion.
 
 The current leader-proposal flow is:
 
@@ -87,9 +82,9 @@ visible.
   a core transition.
 
 Protocol code should not hide database work, networking, timers, or retry
-policy behind state mutation. If completing shell work later becomes a
-protocol-visible prerequisite, model that completion as an explicit
-`Lifecycle` input.
+policy behind state mutation. If shell completion later becomes
+protocol-visible input, introduce a concrete core API for that behavior with
+tests that prove why the core needs it.
 
 ## Storage And Network Outputs
 
@@ -113,8 +108,8 @@ Restart is a shell responsibility with a deterministic core contract.
 At startup, the shell loads the latest durable protocol projection from the DB
 and constructs the core from it. If the system supports replay after a snapshot,
 the replayed history must include the same protocol inputs and any future
-lifecycle inputs that affect protocol state, so restarted behavior can be
-compared with uninterrupted behavior.
+core-visible shell completion inputs, so restarted behavior can be compared
+with uninterrupted behavior.
 
 The core should not query the whole DB to make ordinary protocol decisions.
 When it needs an artifact that is not in its current projection, the surrounding
@@ -126,10 +121,10 @@ fetch policy are handled outside core.
 The shell may run DB writes, network sends, timers, and fetches concurrently.
 The core should remain single-writer and deterministic.
 
-Concurrent shell completions that matter to protocol behavior must re-enter the
-core through an ordered input stream. Current leader proposal persistence does
-not wait for a lifecycle signal; its dependency is enforced by shell ordering
-between the storage and network outputs in one `Ready` batch.
+Shell completion that matters to protocol behavior must re-enter the core
+through an explicit, ordered input. Current leader proposal persistence has no
+core completion input; its dependency is enforced by shell ordering between the
+storage and network outputs in one `Ready` batch.
 
 ## Testing Implications
 
@@ -146,7 +141,8 @@ Useful tests assert Minimmit-owned behavior:
 - empty transitions return `Ready::default()`
 - restarted and uninterrupted cores behave the same for the supported
   projection
-- lifecycle inputs are added only when completion affects protocol state
+- future shell completion inputs are added only when completion affects protocol
+  state
 
 Avoid tests that inspect DB mechanics, async task queues, or private shell
 buffers from `minimmit-core`. Those belong in shell, store, sync, or simulation

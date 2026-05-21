@@ -24,14 +24,6 @@ Event -> Processor -> Ready
 protocol state for one validator identity and applies the transition, and
 `Ready` describes deterministic outputs for an outer shell to perform.
 
-Shell-owned completion enters the processor through the separate lifecycle
-boundary:
-
-```text
-Lifecycle -> Processor -> Ready
-```
-
-`Lifecycle` is intentionally empty today. The current leader proposal
-transition returns storage and network work together in `Ready`; when both
-outputs refer to the same proposal, the shell persists first and broadcasts
-only after the proposal is durable.
+The current leader proposal transition returns storage and network work
+together in `Ready`; when both outputs refer to the same proposal, the shell
+persists first and broadcasts only after the proposal is durable.

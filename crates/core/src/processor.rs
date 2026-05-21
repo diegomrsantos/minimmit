@@ -118,16 +118,6 @@ impl Processor {
         }
     }
 
-    /// Applies shell lifecycle feedback and returns ready output.
-    ///
-    /// There are no lifecycle signals in the current core surface. The method
-    /// remains as the deterministic boundary for future shell completion inputs
-    /// that must re-enter protocol state.
-    #[must_use]
-    pub fn lifecycle(&mut self, event: Lifecycle) -> Ready {
-        match event {}
-    }
-
     /// Starts the local leader proposal transition when the current view allows it.
     fn propose(&mut self, input: ProposalInput) -> Ready {
         if self.proposed_current_view
@@ -374,16 +364,6 @@ impl ProposalInput {
         &self.transactions
     }
 }
-
-/// Shell lifecycle feedback observed by [`Processor`].
-///
-/// Lifecycle input reports completion of shell-owned work without moving
-/// storage, networking, or runtime behavior into the core. The current core has
-/// no lifecycle signals; new variants should be added only when shell
-/// completion must change later protocol behavior.
-#[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Lifecycle {}
 
 /// Deterministic output produced by a [`Processor`] transition.
 ///

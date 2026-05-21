@@ -23,11 +23,11 @@ Keep the protocol core deterministic and reviewable. Runtime concerns such as
 networking, storage engines, wall-clock timers, and production orchestration
 belong outside `minimmit-core`.
 
-When core behavior depends on shell completion, model that as an explicit
-lifecycle input. Ready outputs may include storage and network work in one
-batch; when both refer to the same artifact, the shell persists first and only
-then releases the network output. See
-[Core And Shell Lifecycle](core-shell-lifecycle.md) for the canonical boundary.
+When core behavior depends on shell completion, model that as a concrete
+core-visible input only when the protocol needs it. Ready outputs may include
+storage and network work in one batch; when both refer to the same artifact,
+the shell persists first and only then releases the network output. See
+[Core And Shell Boundary](core-shell-boundary.md) for the canonical boundary.
 
 When sync, store, simulation, or shell work can be overloaded, make degradation
 bounded, observable, and replayable instead of hiding debt in queues. See
@@ -95,7 +95,7 @@ deterministic state machine.
 
 Includes:
 
-- `Processor`, `Event`, `Lifecycle`, and `Ready`
+- `Processor`, `Event`, and `Ready`
 - storage and network ready output queues
 - documented persist-before-broadcast contract for shell-ordered proposal output
 - local view state
@@ -142,8 +142,8 @@ Includes:
 - consistency-related regressions
 - view progression evidence
 - persistence-sensitive behavior, such as persist-before-dependent-output paths,
-  driven through explicit ready outputs and lifecycle input when completion must
-  change later core behavior
+  driven through explicit ready outputs and concrete core inputs when shell
+  completion must change later core behavior
 - explicit liveness evidence gaps where executable evidence is not yet present
 
 Done when:
@@ -379,7 +379,7 @@ Includes:
 
 - adapter from runtime events into deterministic crate inputs
 - adapter from deterministic ready outputs into runtime actions
-- adapter from future shell completion events into lifecycle inputs when
+- adapter from future shell completion events into concrete core inputs when
   completion affects protocol state
 - integration tests that preserve protocol boundaries
 
