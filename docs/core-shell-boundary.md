@@ -101,6 +101,9 @@ If persistence fails, the shell must not broadcast the dependent proposal. The
 first implementation may stop at an explicit shell error or shutdown path
 rather than inventing recovery policy in the core.
 
+Before a shell crate consumes `Network::BroadcastProposal`, shell-side tests
+must cover this storage-before-network release rule.
+
 ## Restart
 
 Restart is a shell responsibility with a deterministic core contract.

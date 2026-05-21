@@ -519,10 +519,35 @@ fn non_leader_proposal_trigger_returns_no_ready_output() {
 fn leader_that_has_already_proposed_does_not_start_second_proposal() {
     let mut processor = leader_processor_for_view_1();
 
+    // Given
     ready_proposal(processor.step(Event::Propose(proposal_input(BlockId::new(10)))));
 
+    // When
     let ready = processor.step(Event::Propose(proposal_input(BlockId::new(11))));
 
+    // Then
+    assert_eq!(ready, Ready::default());
+    assert_eq!(
+        observed_proposal_blocks(&processor, ViewNumber::new(1)),
+        [BlockId::new(10)]
+    );
+}
+
+#[test]
+fn observed_local_current_view_proposal_consumes_proposal_slot() {
+    let mut processor = leader_processor_for_view_1();
+    let local_proposal = proposal(BlockId::new(10), ViewNumber::new(1));
+
+    // Given
+    assert_eq!(
+        processor.step(Event::Proposal(local_proposal)),
+        Ready::default()
+    );
+
+    // When
+    let ready = processor.step(Event::Propose(proposal_input(BlockId::new(11))));
+
+    // Then
     assert_eq!(ready, Ready::default());
     assert_eq!(
         observed_proposal_blocks(&processor, ViewNumber::new(1)),
@@ -538,13 +563,17 @@ fn invalid_leader_proposal_input_does_not_record_proposed_state() {
         [TransactionId::new(1), TransactionId::new(1)],
     );
 
+    // Given
     assert_eq!(
         processor.step(Event::Propose(duplicate_transactions)),
         Ready::default()
     );
     assert_eq!(observed_proposal_blocks(&processor, ViewNumber::new(1)), []);
 
+    // When
     ready_proposal(processor.step(Event::Propose(proposal_input(BlockId::new(10)))));
+
+    // Then
     assert_eq!(
         observed_proposal_blocks(&processor, ViewNumber::new(1)),
         [BlockId::new(10)]

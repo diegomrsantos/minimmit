@@ -202,12 +202,16 @@ impl Processor {
     ///
     /// Duplicate observations for the same `(view, block)` keep the first
     /// admitted proposal so observation storage stays deterministic without
-    /// choosing a later replacement policy.
+    /// choosing a later replacement policy. A valid local proposal for the
+    /// current view consumes the local leader's one-proposal slot, even when it
+    /// arrives through the artifact path.
     fn record_proposal(&mut self, proposal: Proposal) {
         if !self.valid_proposal_observation(&proposal) {
             return;
         }
 
+        let consumes_local_proposal_slot = proposal.proposer() == self.local_validator
+            && proposal.block().view() == self.current_view;
         let view = proposal.block().view();
         let block = proposal.block().id();
 
@@ -216,6 +220,10 @@ impl Processor {
             .or_default()
             .entry(block)
             .or_insert(proposal);
+
+        if consumes_local_proposal_slot {
+            self.proposed_current_view = true;
+        }
     }
 
     /// Records a non-genesis M-notarization valid for this processor's committee.

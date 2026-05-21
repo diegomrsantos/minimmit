@@ -90,6 +90,11 @@ assumptions:
     source_anchor:
       sections: ["The formal specification"]
       labels: ["alg1"]
+  ASM-LEADER-SCHEDULE:
+    statement: "The processor models lead(v) with Committee::leader(view), which chooses view modulo n over deterministic validator identity order."
+    source_anchor:
+      sections: ["Algorithm 1"]
+      labels: ["sendblock"]
   ASM-GENESIS:
     statement: "Local state starts with the genesis block and M/L notarizations for genesis."
     source_anchor:

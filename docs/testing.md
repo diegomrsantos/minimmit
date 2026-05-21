@@ -219,8 +219,8 @@ Private protocol-event research:
   represent shell work completion explicitly instead of hiding output
   lifecycle state inside the core.
 - [proto-core-lab deterministic cores and shells](https://github.com/diegomrsantos/proto-core-lab/blob/main/docs/decisions/0007-framework-direction-deterministic-cores-and-shells.md):
-  keep core semantics deterministic while shells execute hard outputs such as
-  persistence.
+  keep core semantics deterministic while shells execute storage and network
+  outputs.
 - [proto-core-lab Quint boundary](https://github.com/diegomrsantos/proto-core-lab/blob/main/docs/quint-connect-boundary.md):
   keep protocol-specific Quint replay mappings local until more than one
   protocol proves the abstraction.

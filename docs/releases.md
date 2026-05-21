@@ -67,8 +67,9 @@ assured groundwork for later core behavior.
   machine
 - it supports a meaningful baseline protocol slice
 - docs explain supported and unsupported behavior
-- docs define shell ordering for hard outputs before dependent protocol outputs;
-  see [Core And Shell Boundary](core-shell-boundary.md)
+- docs define storage-before-network ordering for dependent ready outputs, such
+  as `Storage::PersistProposal` before the matching
+  `Network::BroadcastProposal`; see [Core And Shell Boundary](core-shell-boundary.md)
 - assurance entries for the supported slice are current
 - `cargo test` passes from a clean checkout
 
