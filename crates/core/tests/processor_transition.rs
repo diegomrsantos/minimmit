@@ -515,6 +515,19 @@ fn non_leader_proposal_trigger_returns_no_ready_output() {
     assert_eq!(observed_proposal_blocks(&processor, ViewNumber::new(1)), []);
 }
 
+// State-fact transition matrix: local leader current-view proposal slot.
+//
+// Fact: the local leader's current-view proposal slot is consumed.
+// Claim: MM-LEADER-PROPOSE / Algorithm 1 sendblock.
+// Establishing events: successful local Event::Propose; observed valid local
+// current-view Event::Proposal.
+// Must not establish: invalid local current-view proposal, or valid local
+// future-view proposal.
+// Depends: a later local Event::Propose for the same current view must not emit
+// a second proposal.
+// Reset: view advancement will reset the slot; current-view advancement is a
+// later evidence gap.
+// Evidence: the proposal-slot tests below cover the current cross-event paths.
 #[test]
 fn leader_that_has_already_proposed_does_not_start_second_proposal() {
     let mut processor = leader_processor_for_view_1();
@@ -527,6 +540,8 @@ fn leader_that_has_already_proposed_does_not_start_second_proposal() {
 
     // Then
     assert_eq!(ready, Ready::default());
+    assert!(ready.is_empty());
+    assert_eq!(processor.current_view(), ViewNumber::new(1));
     assert_eq!(
         observed_proposal_blocks(&processor, ViewNumber::new(1)),
         [BlockId::new(10)]
@@ -549,9 +564,69 @@ fn observed_local_current_view_proposal_consumes_proposal_slot() {
 
     // Then
     assert_eq!(ready, Ready::default());
+    assert!(ready.is_empty());
+    assert_eq!(processor.current_view(), ViewNumber::new(1));
     assert_eq!(
         observed_proposal_blocks(&processor, ViewNumber::new(1)),
         [BlockId::new(10)]
+    );
+}
+
+#[test]
+fn invalid_observed_local_current_view_proposal_does_not_consume_proposal_slot() {
+    let mut processor = leader_processor_for_view_1();
+    let invalid_local_proposal = proposal_with_parent_notarization_from_other_committee(
+        BlockId::new(10),
+        ViewNumber::new(1),
+    );
+
+    // Given
+    assert_eq!(
+        processor.step(Event::Proposal(invalid_local_proposal)),
+        Ready::default()
+    );
+    assert_eq!(observed_proposal_blocks(&processor, ViewNumber::new(1)), []);
+
+    // When
+    let proposal = ready_proposal(processor.step(Event::Propose(proposal_input(BlockId::new(10)))));
+
+    // Then
+    assert_eq!(processor.current_view(), ViewNumber::new(1));
+    assert_eq!(proposal.block().id(), BlockId::new(10));
+    assert_eq!(
+        observed_proposal_blocks(&processor, ViewNumber::new(1)),
+        [BlockId::new(10)]
+    );
+}
+
+#[test]
+fn observed_local_future_view_proposal_does_not_consume_current_view_proposal_slot() {
+    let mut processor = leader_processor_for_view_1();
+    let future_local_proposal = proposal(BlockId::new(70), ViewNumber::new(7));
+
+    // Given
+    assert_eq!(
+        processor.step(Event::Proposal(future_local_proposal)),
+        Ready::default()
+    );
+    assert_eq!(
+        observed_proposal_blocks(&processor, ViewNumber::new(7)),
+        [BlockId::new(70)]
+    );
+
+    // When
+    let proposal = ready_proposal(processor.step(Event::Propose(proposal_input(BlockId::new(10)))));
+
+    // Then
+    assert_eq!(processor.current_view(), ViewNumber::new(1));
+    assert_eq!(proposal.block().id(), BlockId::new(10));
+    assert_eq!(
+        observed_proposal_blocks(&processor, ViewNumber::new(1)),
+        [BlockId::new(10)]
+    );
+    assert_eq!(
+        observed_proposal_blocks(&processor, ViewNumber::new(7)),
+        [BlockId::new(70)]
     );
 }
 

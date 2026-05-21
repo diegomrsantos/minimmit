@@ -29,6 +29,8 @@ paper claim -> explicit event -> core step -> semantic effect -> evidence
 - Prefer explicit protocol events over synthetic mega-events.
 - Prefer semantic effects and selected post-state assertions over raw runtime
   buckets for most protocol tests.
+- Prefer short event traces plus semantic assertions over full private state
+  comparisons.
 - Keep raw `Ready` assertions for focused boundary tests.
 - Keep scenarios short enough for reviewers to read.
 
