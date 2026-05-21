@@ -24,15 +24,6 @@ Event -> Processor -> Ready
 protocol state for one validator identity and applies the transition, and
 `Ready` describes deterministic outputs for an outer shell to perform.
 
-Shell-owned completion enters the processor through the separate lifecycle
-boundary:
-
-```text
-Lifecycle -> Processor -> Ready
-```
-
-The first lifecycle input is persistence completion. The shell owns the storage
-work and reports completion with the matching persistence identifier. Current
-processor transitions do not emit persistence work yet, so persistence
-completion is a deterministic no-op until a real protocol transition records
-pending persistence state.
+The current leader proposal transition returns storage and network work
+together in `Ready`; when both outputs refer to the same proposal, the shell
+persists first and broadcasts only after the proposal is durable.

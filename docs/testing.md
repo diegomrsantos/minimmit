@@ -20,11 +20,11 @@ Use the smallest deterministic test that gives useful confidence. For current
 values. Once the deterministic core exposes an input boundary, protocol
 scenario tests should drive that boundary directly.
 
-When a core output depends on shell work becoming durable, tests should model
-that progress as an explicit lifecycle input. Do not let tests assume that a
-storage command completed unless the scenario feeds the corresponding
-completion input back into the core. See
-[Core And Shell Lifecycle](core-shell-lifecycle.md) for the lifecycle boundary.
+When a core output depends on shell work becoming durable before release, tests
+should assert the protocol-visible ready outputs and the shell ordering
+contract. Add a core-visible shell completion input only when completion must
+change later core behavior. See
+[Core And Shell Boundary](core-shell-boundary.md) for the core/shell boundary.
 
 When sync, store, simulation, or shell work models overload, tests should assert
 bounded degradation through deterministic observations. See
@@ -41,6 +41,12 @@ behavior rather than a change in Minimmit behavior.
 
 Tests should read as concrete protocol stories. Keep the relevant setup,
 transition, and assertion visible when they are short.
+
+Structure non-trivial input-step and scenario tests as `Given` / `When` /
+`Then`, the behavior-focused form of Arrange / Act / Assert. Use section
+comments when the phases are not obvious from blank lines alone. `Given` should
+set up concrete protocol state, `When` should drive the event or transition
+under test, and `Then` should assert semantic output or selected post-state.
 
 Use helpers for meaningful domain fixtures that would otherwise distract from
 the behavior under test. Do not wrap scalar construction or simple assertions
@@ -65,8 +71,8 @@ only restate assertions or obvious control flow.
 - Small claim tests are the default. They cover thresholds, typed
   construction, duplicate rejection, distinct sender counting, deterministic
   ordering, and precise errors.
-- Input-step tests should drive one explicit protocol event or lifecycle input
-  through the core and inspect the returned protocol-visible output.
+- Input-step tests should drive one explicit protocol event through the core and
+  inspect the returned protocol-visible output.
 - Scenario tests should feed a short ordered input trace, record step outcomes,
   and assert a named protocol story.
 - Overload scenario tests should assert public deterministic observations such
@@ -123,7 +129,7 @@ Unreplayable failures are not acceptable evidence.
 Start replay and search work with short explicit traces. Move next to seeded
 shuffle or small exhaustive event bags. Richer scheduling, broad simulation,
 chaos, Antithesis integration, Jepsen-style external testing, and VOPR-style
-infrastructure should wait until local `Event`/`Lifecycle` -> `Core` -> `Ready`
+infrastructure should wait until local `Event` -> `Processor` -> `Ready`
 scenarios prove the need.
 
 For Quint or model conformance, map named model actions into Rust events at a
@@ -136,10 +142,10 @@ evidence unless the trace drives Rust behavior.
 - Keep `minimmit-core` deterministic and free of hidden IO, wall-clock time,
   randomness, async scheduling, networking, storage engines, and production
   shell behavior.
-- Represent shell persistence completion as explicit input when a protocol
-  output depends on it.
-- Assert persistence-gated behavior through protocol-visible outputs, not DB
-  mechanics or shell queues.
+- Represent shell ordering through explicit ready outputs. Add core-visible
+  shell completion input only when completion must change later core behavior.
+- Assert persist-before-broadcast behavior through protocol-visible outputs,
+  not DB mechanics or shell queues.
 - Assert bounded degradation through explicit observations when overload policy
   belongs to the crate under test.
 - Prefer behavior tests through public APIs and protocol-facing outputs.
@@ -153,8 +159,8 @@ evidence unless the trace drives Rust behavior.
 
 ## Defer
 
-Do not add these until the local `Event`/`Lifecycle` -> `Core` -> `Ready` shape
-and scenario tests justify them:
+Do not add these until the local `Event` -> `Processor` -> `Ready` shape and
+scenario tests justify them:
 
 - broad simulation or chaos framework
 - Antithesis integration
@@ -213,8 +219,8 @@ Private protocol-event research:
   represent shell work completion explicitly instead of hiding output
   lifecycle state inside the core.
 - [proto-core-lab deterministic cores and shells](https://github.com/diegomrsantos/proto-core-lab/blob/main/docs/decisions/0007-framework-direction-deterministic-cores-and-shells.md):
-  keep core semantics deterministic while shells execute and acknowledge hard
-  outputs such as persistence.
+  keep core semantics deterministic while shells execute storage and network
+  outputs.
 - [proto-core-lab Quint boundary](https://github.com/diegomrsantos/proto-core-lab/blob/main/docs/quint-connect-boundary.md):
   keep protocol-specific Quint replay mappings local until more than one
   protocol proves the abstraction.

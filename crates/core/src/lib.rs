@@ -17,7 +17,7 @@ pub use committee::{Committee, CommitteeError};
 pub use config::{Config, ConfigError};
 pub use evidence::{EvidenceError, LNotarization, MNotarization, Nullification, Nullify, Vote};
 pub use identity::{BlockId, TransactionId, ValidatorId, ViewNumber};
-pub use processor::{Event, Lifecycle, PersistenceId, Processor, ProcessorError, Ready};
+pub use processor::{Event, Network, Processor, ProcessorError, ProposalInput, Ready, Storage};
 pub use proposal::{Proposal, ProposalError};
 pub use proposal_validation::{
     select_parent, validate_proposal, ParentSelectionError, ProposalValidationError,

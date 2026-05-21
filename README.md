@@ -56,14 +56,14 @@ The intended direction is a small core shaped around explicit inputs and
 outputs:
 
 ```text
-Event     -> Processor -> Ready
-Lifecycle -> Processor -> Ready
+Event -> Processor -> Ready
 ```
 
-`Event` is what the protocol observes, `Lifecycle` is shell completion feedback,
-`Processor` is the local deterministic state machine that applies the protocol
-rules for one validator identity, and `Ready` is what an outer runtime should do
-next.
+`Event` is what the protocol observes, `Processor` is the local deterministic
+state machine that applies the protocol rules for one validator identity, and
+`Ready` is what an outer runtime should do next. `Ready` can carry storage and
+network work together; the shell owns IO execution and must persist proposal
+output before broadcasting the matching proposal.
 
 Assurance guidance is documented under `docs/assurance/`; the core crate ledger
 lives at `crates/core/assurance.yaml`. Dependency policy is documented in
