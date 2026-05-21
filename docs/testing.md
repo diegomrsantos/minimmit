@@ -66,6 +66,27 @@ deliberate ordering, or regression risk that names and assertions do not make
 obvious. Prefer clearer names or structure first, and do not add comments that
 only restate assertions or obvious control flow.
 
+## State-Fact Transition Matrix
+
+Protocol PRs that change processor state, events, validation, or `Ready`
+outputs should name the protocol state facts they touch before implementation.
+For each fact, include a small state-fact transition matrix in the test,
+nearby protocol documentation, or PR text:
+
+- fact name in protocol vocabulary
+- paper claim or explicit evidence gap
+- events that establish the fact
+- events that must not establish the fact
+- later events that depend on the fact
+- event that resets the fact, or the explicit reset evidence gap
+- executable evidence that covers the cross-event path
+
+Name facts by their protocol meaning, not by private storage. For example,
+`proposed_current_view` is an implementation detail for the fact that the local
+leader's current-view proposal slot is consumed. Matrix evidence should drive
+real `Event` -> `Processor` -> `Ready` transitions and assert public semantic
+effects such as ready output, observed artifacts, view, or selected post-state.
+
 ## Test Layers
 
 - Small claim tests are the default. They cover thresholds, typed
@@ -153,6 +174,8 @@ evidence unless the trace drives Rust behavior.
 - Remove mechanical coverage instead of relocating it when cleanup scope
   permits.
 - Let `crates/core/assurance.yaml` drive protocol test priority.
+- Add or update a state-fact transition matrix when protocol state, events,
+  validation, or ready outputs change.
 - Treat model-only checks as design evidence unless they are connected to Rust
   behavior.
 - Use explicit evidence gaps rather than implying coverage from partial tests.

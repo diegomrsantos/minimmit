@@ -30,10 +30,12 @@ with the paper, the paper wins.
 For every protocol behavior:
 
 1. Identify the paper claim or protocol obligation.
-2. Write the failing test first, or explicitly record the missing evidence gap.
-3. Implement the smallest deterministic core behavior that satisfies the test.
-4. Update the evidence manifest when one exists.
-5. Mark an obligation satisfied only when executable evidence backs it.
+2. Name each protocol state fact touched by the change and write a small
+   state-fact transition matrix before implementation.
+3. Write the failing test first, or explicitly record the missing evidence gap.
+4. Implement the smallest deterministic core behavior that satisfies the test.
+5. Update the evidence manifest when one exists.
+6. Mark an obligation satisfied only when executable evidence backs it.
 
 If a change spans unrelated concerns, split it before implementation.
 
@@ -42,7 +44,7 @@ If a change spans unrelated concerns, split it before implementation.
 The protocol core should remain a deterministic state machine:
 
 ```text
-Event -> Core -> Ready
+Event -> Processor -> Ready
 ```
 
 Keep protocol concepts explicit in the core API. Use literal names for protocol
@@ -65,6 +67,13 @@ manifest or the protocol claims document once those exist.
 When a change touches protocol behavior, make the relevant claim explicit and
 tie it to executable evidence. Unsupported claims must stay visible as deferred
 or warning entries. Do not imply paper completeness from partial tests.
+
+For changed processor state, record the state-fact matrix in the test, nearby
+protocol documentation, or PR text. Each matrix should identify the fact, claim
+or evidence gap, establishing events, events that must not establish it, later
+events that depend on it, reset event or reset gap, and executable evidence for
+the cross-event path. Use protocol vocabulary for the fact; private fields are
+implementation choices.
 
 Before accepting protocol behavior, check for coverage of durable protocol
 risks: threshold arithmetic, distinct valid sender counting, one vote per view,
