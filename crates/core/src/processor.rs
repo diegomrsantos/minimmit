@@ -134,8 +134,8 @@ impl Processor {
         self.record_proposal(proposal.clone());
 
         Ready {
-            storage: vec![StorageReady::PersistProposal(proposal.clone())],
-            network: vec![NetworkReady::BroadcastProposal(proposal)],
+            storage: vec![Storage::PersistProposal(proposal.clone())],
+            network: vec![Network::BroadcastProposal(proposal)],
         }
     }
 
@@ -375,21 +375,21 @@ impl ProposalInput {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Ready {
     /// Storage work the shell should complete.
-    pub storage: Vec<StorageReady>,
+    pub storage: Vec<Storage>,
     /// Network work the shell should release after required storage work.
-    pub network: Vec<NetworkReady>,
+    pub network: Vec<Network>,
 }
 
 /// Storage work produced by a [`Processor`] transition.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum StorageReady {
+pub enum Storage {
     /// Persist a proposal before releasing dependent network output.
     PersistProposal(Proposal),
 }
 
 /// Network work produced by a [`Processor`] transition.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum NetworkReady {
+pub enum Network {
     /// Broadcast a proposal after its matching storage output is durable.
     BroadcastProposal(Proposal),
 }
@@ -426,7 +426,7 @@ impl std::error::Error for ProcessorError {}
 
 #[cfg(test)]
 mod tests {
-    use super::{Event, NetworkReady, Processor, ProposalInput, Ready, StorageReady};
+    use super::{Event, Network, Processor, ProposalInput, Ready, Storage};
     use crate::{
         BlockId, Committee, MNotarization, Nullification, Nullify, TransactionId, ValidatorId,
         ViewNumber, Vote,
@@ -476,8 +476,8 @@ mod tests {
         assert_eq!(ready.storage.len(), 1, "expected one storage output");
         assert_eq!(ready.network.len(), 1, "expected one network output");
 
-        let StorageReady::PersistProposal(persisted) = &ready.storage[0];
-        let NetworkReady::BroadcastProposal(broadcast) = &ready.network[0];
+        let Storage::PersistProposal(persisted) = &ready.storage[0];
+        let Network::BroadcastProposal(broadcast) = &ready.network[0];
 
         assert_eq!(persisted, broadcast);
         persisted.clone()

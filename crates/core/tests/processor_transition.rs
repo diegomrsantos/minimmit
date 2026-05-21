@@ -2,9 +2,9 @@ mod common;
 
 use common::{committee, m_notarization};
 use minimmit_core::{
-    Block, BlockId, Committee, Event, MNotarization, NetworkReady, Nullification, Nullify,
-    Processor, ProcessorError, Proposal, ProposalInput, Ready, StorageReady, TransactionId,
-    ValidatorId, ViewNumber, Vote,
+    Block, BlockId, Committee, Event, MNotarization, Network, Nullification, Nullify, Processor,
+    ProcessorError, Proposal, ProposalInput, Ready, Storage, TransactionId, ValidatorId,
+    ViewNumber, Vote,
 };
 
 fn replay(processor: &mut Processor, inputs: Vec<Event>) -> Vec<Ready> {
@@ -66,8 +66,8 @@ fn ready_proposal(ready: Ready) -> Proposal {
     assert_eq!(ready.storage.len(), 1, "expected one storage output");
     assert_eq!(ready.network.len(), 1, "expected one network output");
 
-    let StorageReady::PersistProposal(persisted) = &ready.storage[0];
-    let NetworkReady::BroadcastProposal(broadcast) = &ready.network[0];
+    let Storage::PersistProposal(persisted) = &ready.storage[0];
+    let Network::BroadcastProposal(broadcast) = &ready.network[0];
 
     assert_eq!(persisted, broadcast);
     persisted.clone()
@@ -555,8 +555,8 @@ fn invalid_leader_proposal_input_does_not_record_proposed_state() {
 fn storage_and_network_ready_output_is_not_empty() {
     let proposal = proposal(BlockId::new(20), ViewNumber::new(2));
     let ready = Ready {
-        storage: vec![StorageReady::PersistProposal(proposal.clone())],
-        network: vec![NetworkReady::BroadcastProposal(proposal)],
+        storage: vec![Storage::PersistProposal(proposal.clone())],
+        network: vec![Network::BroadcastProposal(proposal)],
     };
 
     assert!(!ready.is_empty());

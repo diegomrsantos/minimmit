@@ -21,8 +21,8 @@ separates storage work from network work:
 
 ```text
 Ready {
-  storage: [StorageReady],
-  network: [NetworkReady],
+  storage: [Storage],
+  network: [Network],
 }
 ```
 
@@ -32,8 +32,8 @@ The current leader-proposal flow is:
 Event::Propose(input)
   -> core builds and records proposal p
   -> Ready {
-       storage: [StorageReady::PersistProposal(p)],
-       network: [NetworkReady::BroadcastProposal(p)],
+       storage: [Storage::PersistProposal(p)],
+       network: [Network::BroadcastProposal(p)],
      }
   -> shell persists p
   -> shell broadcasts p
