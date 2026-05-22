@@ -259,21 +259,36 @@ fn nullification_event_records_current_view_nullification_without_ready_output()
     assert_eq!(observed_nullifications(&processor), [ViewNumber::new(1)]);
 }
 
-// State-fact transition matrix: current-view vote.
+// Protocol state fact: current view vote.
 //
-// Fact: the processor has voted in its current view.
-// Claim: MM-VOTE-VALID-PROPOSAL / Algorithm 1 votecheck and vote1.
-// Establishing events: successful local Event::Propose; observed valid
-// current-view Event::Proposal when the processor has not already voted and the
-// current view is not nullified.
-// Must not establish: invalid proposals, stale or future proposals, proposals
-// for non-leaders, proposals with invalid evidence, or events after the current
-// view has a vote or nullification.
-// Depends: later proposal, timeout, nullification, and M-notarization paths
-// need the per-view vote fact to avoid double voting and illegal nullification.
-// Reset: view advancement will reset the slot; current-view advancement is a
-// later evidence gap in #73 and #74.
-// Evidence: the vote tests below cover current cross-event paths.
+// Claim: MM-VOTE-VALID-PROPOSAL, Algorithm 1 votecheck and vote1.
+//
+// Meaning:
+// The processor has cast its one vote for its current view.
+//
+// Established by:
+// - successful local Event::Propose, which emits proposal work and matching vote
+//   work
+// - observed valid current view Event::Proposal, when the processor has not
+//   voted or observed current view nullification
+//
+// Not established by:
+// - invalid proposal evidence
+// - stale or future proposals
+// - proposal not signed by the view leader
+// - any proposal after the current view already has a vote or nullification
+//
+// Used by:
+// Later proposal, timeout, nullification, and M-notarization transitions must
+// preserve one vote per view and avoid illegal nullification after voting.
+//
+// Reset:
+// View advancement will reset this fact. That executable evidence remains
+// deferred to #73 and #74.
+//
+// Evidence:
+// The tests below cover the establishing and blocked paths available before
+// view advancement lands.
 #[test]
 fn current_view_proposal_emits_vote_ready_output() {
     let mut processor = processor();
