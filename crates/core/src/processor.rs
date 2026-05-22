@@ -703,6 +703,9 @@ mod tests {
 
     #[test]
     fn stale_valid_proposal_does_not_emit_vote() {
+        // Claim: MM-VOTE-VALID-PROPOSAL (votecheck/vote1).
+        // Story: a valid stale proposal is observed, but it is not a current
+        // view proposal and cannot receive the local vote.
         // Given
         let mut processor = processor_at_view(ValidatorId::new(5), ViewNumber::new(5));
         // Current-view advancement is implemented later; seed the private view
@@ -731,6 +734,9 @@ mod tests {
 
     #[test]
     fn current_view_proposal_missing_skipped_nullification_does_not_emit_vote() {
+        // Claim: MM-VOTE-VALID-PROPOSAL (votecheck/vote1).
+        // Story: a current view proposal with incomplete skipped view evidence
+        // is rejected before the vote guard can consume the local vote.
         // Given
         let mut processor = processor_at_view(ValidatorId::new(5), ViewNumber::new(5));
         // Current-view advancement is implemented later; seed the private view
