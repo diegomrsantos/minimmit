@@ -564,29 +564,6 @@ mod tests {
         ProposalInput::new(block, [TransactionId::new(block.get())])
     }
 
-    fn ready_leader_proposal(ready: Ready) -> crate::Proposal {
-        assert_eq!(ready.storage.len(), 2, "expected two storage outputs");
-        assert_eq!(ready.network.len(), 2, "expected two network outputs");
-
-        let Storage::PersistProposal(persisted) = &ready.storage[0] else {
-            panic!("expected proposal storage output");
-        };
-        let Network::BroadcastProposal(broadcast) = &ready.network[0] else {
-            panic!("expected proposal network output");
-        };
-
-        assert_eq!(persisted, broadcast);
-        let expected_vote = Vote::new(
-            persisted.proposer(),
-            persisted.block().id(),
-            persisted.block().view(),
-        );
-        assert_eq!(ready.storage[1], Storage::PersistVote(expected_vote));
-        assert_eq!(ready.network[1], Network::BroadcastVote(expected_vote));
-
-        persisted.clone()
-    }
-
     fn observe_m_notarizations<const N: usize>(
         processor: &mut Processor,
         notarizations: [(BlockId, ViewNumber); N],
@@ -660,12 +637,26 @@ mod tests {
         observe_nullifications(&mut processor, [ViewNumber::new(4)]);
 
         // When
-        let persisted =
-            ready_leader_proposal(processor.step(Event::Propose(proposal_input(BlockId::new(50)))));
+        let ready = processor.step(Event::Propose(proposal_input(BlockId::new(50))));
 
         // Then
+        assert_eq!(ready.storage.len(), 2, "expected two storage outputs");
+        assert_eq!(ready.network.len(), 2, "expected two network outputs");
+
+        let Storage::PersistProposal(persisted) = &ready.storage[0] else {
+            panic!("expected proposal storage output");
+        };
+        let Network::BroadcastProposal(broadcast) = &ready.network[0] else {
+            panic!("expected proposal network output");
+        };
+
+        assert_eq!(persisted, broadcast);
+        let expected_vote = Vote::new(ValidatorId::new(5), BlockId::new(50), ViewNumber::new(5));
+        assert_eq!(ready.storage[1], Storage::PersistVote(expected_vote));
+        assert_eq!(ready.network[1], Network::BroadcastVote(expected_vote));
+
         let proposal = observed_proposal(&processor, ViewNumber::new(5));
-        assert_eq!(proposal, &persisted);
+        assert_eq!(proposal, persisted);
         assert_proposal_extends_parent(
             proposal,
             BlockId::new(20),
@@ -694,7 +685,20 @@ mod tests {
         let ready = processor.step(Event::Propose(proposal_input(BlockId::new(50))));
 
         // Then
-        ready_leader_proposal(ready);
+        assert_eq!(ready.storage.len(), 2, "expected two storage outputs");
+        assert_eq!(ready.network.len(), 2, "expected two network outputs");
+
+        let Storage::PersistProposal(persisted) = &ready.storage[0] else {
+            panic!("expected proposal storage output");
+        };
+        let Network::BroadcastProposal(broadcast) = &ready.network[0] else {
+            panic!("expected proposal network output");
+        };
+
+        assert_eq!(persisted, broadcast);
+        let expected_vote = Vote::new(ValidatorId::new(5), BlockId::new(50), ViewNumber::new(5));
+        assert_eq!(ready.storage[1], Storage::PersistVote(expected_vote));
+        assert_eq!(ready.network[1], Network::BroadcastVote(expected_vote));
     }
 
     #[test]

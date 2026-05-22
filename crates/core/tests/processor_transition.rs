@@ -62,7 +62,11 @@ fn proposal_input(block_id: BlockId) -> ProposalInput {
     ProposalInput::new(block_id, [TransactionId::new(block_id.get())])
 }
 
-fn ready_leader_proposal(ready: Ready) -> Proposal {
+/// Asserts leader proposal ready output contains proposal work followed by vote work.
+///
+/// Returns the persisted proposal so tests can assert the proposal fields
+/// without repeating the ready output shape.
+fn assert_leader_proposal_ready(ready: Ready) -> Proposal {
     assert_eq!(ready.storage.len(), 2, "expected two storage outputs");
     assert_eq!(ready.network.len(), 2, "expected two network outputs");
 
@@ -311,7 +315,7 @@ fn processor_that_already_voted_does_not_vote_again() {
 fn leader_that_proposed_does_not_vote_for_conflicting_proposal() {
     let mut processor = leader_processor_for_view_1();
 
-    ready_leader_proposal(processor.step(Event::Propose(proposal_input(BlockId::new(10)))));
+    assert_leader_proposal_ready(processor.step(Event::Propose(proposal_input(BlockId::new(10)))));
 
     let ready = processor.step(Event::Proposal(proposal(
         BlockId::new(11),
@@ -635,7 +639,7 @@ fn leader_proposal_trigger_records_and_returns_proposal_then_vote_work() {
 
     let ready = processor.step(Event::Propose(proposal_input(BlockId::new(10))));
 
-    let persisted = ready_leader_proposal(ready);
+    let persisted = assert_leader_proposal_ready(ready);
     assert_view_1_leader_proposal(&persisted);
     assert_eq!(
         observed_proposal_blocks(&processor, ViewNumber::new(1)),
@@ -679,7 +683,7 @@ fn leader_that_has_already_proposed_does_not_start_second_proposal() {
     let mut processor = leader_processor_for_view_1();
 
     // Given
-    ready_leader_proposal(processor.step(Event::Propose(proposal_input(BlockId::new(10)))));
+    assert_leader_proposal_ready(processor.step(Event::Propose(proposal_input(BlockId::new(10)))));
 
     // When
     let ready = processor.step(Event::Propose(proposal_input(BlockId::new(11))));
@@ -734,8 +738,9 @@ fn invalid_observed_local_current_view_proposal_does_not_consume_proposal_slot()
     assert_eq!(observed_proposal_blocks(&processor, ViewNumber::new(1)), []);
 
     // When
-    let proposal =
-        ready_leader_proposal(processor.step(Event::Propose(proposal_input(BlockId::new(10)))));
+    let proposal = assert_leader_proposal_ready(
+        processor.step(Event::Propose(proposal_input(BlockId::new(10)))),
+    );
 
     // Then
     assert_eq!(processor.current_view(), ViewNumber::new(1));
@@ -762,8 +767,9 @@ fn observed_local_future_view_proposal_does_not_consume_current_view_proposal_sl
     );
 
     // When
-    let proposal =
-        ready_leader_proposal(processor.step(Event::Propose(proposal_input(BlockId::new(10)))));
+    let proposal = assert_leader_proposal_ready(
+        processor.step(Event::Propose(proposal_input(BlockId::new(10)))),
+    );
 
     // Then
     assert_eq!(processor.current_view(), ViewNumber::new(1));
@@ -794,7 +800,7 @@ fn invalid_leader_proposal_input_does_not_record_proposed_state() {
     assert_eq!(observed_proposal_blocks(&processor, ViewNumber::new(1)), []);
 
     // When
-    ready_leader_proposal(processor.step(Event::Propose(proposal_input(BlockId::new(10)))));
+    assert_leader_proposal_ready(processor.step(Event::Propose(proposal_input(BlockId::new(10)))));
 
     // Then
     assert_eq!(
