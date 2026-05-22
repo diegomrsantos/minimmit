@@ -536,6 +536,11 @@ mod tests {
         .expect("nullifies form a nullification")
     }
 
+    /// Builds a proposal signed by the view leader with caller supplied parent evidence.
+    ///
+    /// Use this helper when a test needs a proposal whose parent view, parent
+    /// block, or skipped view nullifications differ from the simple previous
+    /// view proposal shape.
     fn proposal_extending(
         block: BlockId,
         view: ViewNumber,
