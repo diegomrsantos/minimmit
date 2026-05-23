@@ -64,29 +64,29 @@ fn proposal_input(block_id: BlockId) -> ProposalInput {
 
 /// Asserts leader proposal ready output contains proposal work followed by vote work.
 ///
-/// Returns the persisted proposal so tests can assert the proposal fields
+/// Returns the proposal from the storage output so tests can assert the fields
 /// without repeating the ready output shape.
 fn assert_leader_proposal_ready(ready: Ready) -> Proposal {
     assert_eq!(ready.storage.len(), 2, "expected two storage outputs");
     assert_eq!(ready.network.len(), 2, "expected two network outputs");
 
-    let Storage::PersistProposal(persisted) = &ready.storage[0] else {
+    let Storage::PersistProposal(storage_proposal) = &ready.storage[0] else {
         panic!("expected proposal storage output");
     };
-    let Network::BroadcastProposal(broadcast) = &ready.network[0] else {
+    let Network::BroadcastProposal(network_proposal) = &ready.network[0] else {
         panic!("expected proposal network output");
     };
 
-    assert_eq!(persisted, broadcast);
+    assert_eq!(storage_proposal, network_proposal);
     let expected_vote = Vote::new(
-        persisted.proposer(),
-        persisted.block().id(),
-        persisted.block().view(),
+        storage_proposal.proposer(),
+        storage_proposal.block().id(),
+        storage_proposal.block().view(),
     );
     assert_eq!(ready.storage[1], Storage::PersistVote(expected_vote));
     assert_eq!(ready.network[1], Network::BroadcastVote(expected_vote));
 
-    persisted.clone()
+    storage_proposal.clone()
 }
 
 fn assert_ready_vote(ready: Ready, vote: Vote) {
@@ -732,8 +732,8 @@ fn leader_proposal_trigger_records_and_returns_proposal_then_vote_work() {
     let ready = processor.step(Event::Propose(proposal_input(BlockId::new(10))));
 
     // Then
-    let persisted = assert_leader_proposal_ready(ready);
-    assert_view_1_leader_proposal(&persisted);
+    let proposal = assert_leader_proposal_ready(ready);
+    assert_view_1_leader_proposal(&proposal);
     assert_eq!(
         observed_proposal_blocks(&processor, ViewNumber::new(1)),
         [BlockId::new(10)]
@@ -743,7 +743,7 @@ fn leader_proposal_trigger_records_and_returns_proposal_then_vote_work() {
             .observed_proposals(ViewNumber::new(1))
             .next()
             .expect("leader proposal is recorded immediately"),
-        &persisted
+        &proposal
     );
 }
 

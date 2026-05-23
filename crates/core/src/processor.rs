@@ -643,20 +643,20 @@ mod tests {
         assert_eq!(ready.storage.len(), 2, "expected two storage outputs");
         assert_eq!(ready.network.len(), 2, "expected two network outputs");
 
-        let Storage::PersistProposal(persisted) = &ready.storage[0] else {
+        let Storage::PersistProposal(storage_proposal) = &ready.storage[0] else {
             panic!("expected proposal storage output");
         };
-        let Network::BroadcastProposal(broadcast) = &ready.network[0] else {
+        let Network::BroadcastProposal(network_proposal) = &ready.network[0] else {
             panic!("expected proposal network output");
         };
 
-        assert_eq!(persisted, broadcast);
+        assert_eq!(storage_proposal, network_proposal);
         let expected_vote = Vote::new(ValidatorId::new(5), BlockId::new(50), ViewNumber::new(5));
         assert_eq!(ready.storage[1], Storage::PersistVote(expected_vote));
         assert_eq!(ready.network[1], Network::BroadcastVote(expected_vote));
 
         let proposal = observed_proposal(&processor, ViewNumber::new(5));
-        assert_eq!(proposal, persisted);
+        assert_eq!(proposal, storage_proposal);
         assert_proposal_extends_parent(
             proposal,
             BlockId::new(20),
@@ -688,14 +688,14 @@ mod tests {
         assert_eq!(ready.storage.len(), 2, "expected two storage outputs");
         assert_eq!(ready.network.len(), 2, "expected two network outputs");
 
-        let Storage::PersistProposal(persisted) = &ready.storage[0] else {
+        let Storage::PersistProposal(storage_proposal) = &ready.storage[0] else {
             panic!("expected proposal storage output");
         };
-        let Network::BroadcastProposal(broadcast) = &ready.network[0] else {
+        let Network::BroadcastProposal(network_proposal) = &ready.network[0] else {
             panic!("expected proposal network output");
         };
 
-        assert_eq!(persisted, broadcast);
+        assert_eq!(storage_proposal, network_proposal);
         let expected_vote = Vote::new(ValidatorId::new(5), BlockId::new(50), ViewNumber::new(5));
         assert_eq!(ready.storage[1], Storage::PersistVote(expected_vote));
         assert_eq!(ready.network[1], Network::BroadcastVote(expected_vote));
