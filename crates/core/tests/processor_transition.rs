@@ -232,11 +232,17 @@ fn noop_event_returns_no_ready_output_and_preserves_state() {
 
 #[test]
 fn future_proposal_event_records_proposal_without_ready_output_or_view_change() {
+    // Claim: MM-VOTE-VALID-PROPOSAL (votecheck/vote1).
+    // Story: a valid future proposal is recorded as evidence, but it is not a
+    // current view vote trigger and does not advance the processor.
+    // Given
     let mut processor = processor();
     let proposal = proposal(BlockId::new(20), ViewNumber::new(2));
 
+    // When
     let ready = processor.step(Event::Proposal(proposal));
 
+    // Then
     assert_eq!(ready, Ready::default());
     assert!(ready.is_empty());
     assert_eq!(processor.current_view(), ViewNumber::new(1));

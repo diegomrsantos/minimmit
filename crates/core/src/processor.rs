@@ -627,6 +627,10 @@ mod tests {
 
     #[test]
     fn leader_proposal_uses_selected_non_genesis_parent_and_skipped_nullifications() {
+        // Claim: MM-LEADER-PROPOSE (sendblock) and MM-PARENT-SELECTION.
+        // Story: in view 5, the leader selects block 20 from view 3 as parent,
+        // carries the view 4 nullification, records the proposal, and emits
+        // proposal work followed by vote work.
         // Given
         let mut processor = processor_at_view(ValidatorId::new(5), ViewNumber::new(5));
         // Current-view advancement is implemented later; seed the private view
@@ -672,6 +676,9 @@ mod tests {
 
     #[test]
     fn leader_proposal_waits_for_all_skipped_view_nullifications() {
+        // Claim: MM-LEADER-PROPOSE (sendblock).
+        // Story: with parent evidence from view 2, a view 5 proposal waits
+        // until nullifications for skipped views 3 and 4 are observed.
         // Given
         let mut processor = processor_at_view(ValidatorId::new(5), ViewNumber::new(5));
         observe_m_notarizations(&mut processor, [(BlockId::new(20), ViewNumber::new(2))]);
