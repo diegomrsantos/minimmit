@@ -569,30 +569,27 @@ mod tests {
         ProposalInput::new(block, [TransactionId::new(block.get())])
     }
 
-    fn observe_m_notarizations<const N: usize>(
+    fn observe_m_notarization(
         processor: &mut Processor,
-        notarizations: [(BlockId, ViewNumber); N],
+        notarized_block: BlockId,
+        notarized_view: ViewNumber,
     ) {
-        for (block, view) in notarizations {
-            assert_eq!(
-                processor.step(Event::MNotarization(m_notarization(block, view))),
-                Ready::default(),
-                "observing an M-notarization should not emit ready work"
-            );
-        }
+        assert_eq!(
+            processor.step(Event::MNotarization(m_notarization(
+                notarized_block,
+                notarized_view
+            ))),
+            Ready::default(),
+            "observing an M-notarization should not emit ready work"
+        );
     }
 
-    fn observe_nullifications<const N: usize>(
-        processor: &mut Processor,
-        nullifications: [ViewNumber; N],
-    ) {
-        for view in nullifications {
-            assert_eq!(
-                processor.step(Event::Nullification(nullification(view))),
-                Ready::default(),
-                "observing a nullification should not emit ready work"
-            );
-        }
+    fn observe_nullification(processor: &mut Processor, nullified_view: ViewNumber) {
+        assert_eq!(
+            processor.step(Event::Nullification(nullification(nullified_view))),
+            Ready::default(),
+            "observing a nullification should not emit ready work"
+        );
     }
 
     fn observed_proposal(processor: &Processor, view: ViewNumber) -> &crate::Proposal {
@@ -604,24 +601,30 @@ mod tests {
 
     fn assert_proposal_extends_parent(
         proposal: &crate::Proposal,
-        parent: BlockId,
-        parent_view: ViewNumber,
-        skipped_views: &[ViewNumber],
+        expected_parent_block: BlockId,
+        expected_parent_view: ViewNumber,
+        expected_skipped_views: &[ViewNumber],
     ) {
-        assert_eq!(proposal.block().parent(), parent);
+        assert_eq!(
+            proposal.block().parent(),
+            expected_parent_block,
+            "proposal block should point at the selected parent"
+        );
         assert_eq!(
             (
                 proposal.parent_notarization().block(),
                 proposal.parent_notarization().view(),
             ),
-            (parent, parent_view)
+            (expected_parent_block, expected_parent_view),
+            "proposal should carry the selected parent M-notarization"
         );
         assert_eq!(
             proposal
                 .nullifications()
                 .map(Nullification::view)
                 .collect::<Vec<_>>(),
-            skipped_views
+            expected_skipped_views,
+            "proposal should carry nullifications for skipped views"
         );
     }
 
@@ -632,21 +635,34 @@ mod tests {
         // carries the view 4 nullification, records the proposal, and emits
         // proposal work followed by vote work.
         // Given
-        let mut processor = processor_at_view(ValidatorId::new(5), ViewNumber::new(5));
+        let local_leader = ValidatorId::new(5);
+        let current_view = ViewNumber::new(5);
+        let selected_parent_block = BlockId::new(20);
+        let selected_parent_view = ViewNumber::new(3);
+        let larger_block_in_selected_parent_view = BlockId::new(30);
+        let older_parent_candidate_block = BlockId::new(10);
+        let older_parent_candidate_view = ViewNumber::new(2);
+        let skipped_view = ViewNumber::new(4);
+        let proposed_block = BlockId::new(50);
+
+        let mut processor = processor_at_view(local_leader, current_view);
         // Current-view advancement is implemented later; seed the private view
         // so this production branch has evidence before advancement reaches it.
-        observe_m_notarizations(
+        observe_m_notarization(
             &mut processor,
-            [
-                (BlockId::new(30), ViewNumber::new(3)),
-                (BlockId::new(20), ViewNumber::new(3)),
-                (BlockId::new(10), ViewNumber::new(2)),
-            ],
+            larger_block_in_selected_parent_view,
+            selected_parent_view,
         );
-        observe_nullifications(&mut processor, [ViewNumber::new(4)]);
+        observe_m_notarization(&mut processor, selected_parent_block, selected_parent_view);
+        observe_m_notarization(
+            &mut processor,
+            older_parent_candidate_block,
+            older_parent_candidate_view,
+        );
+        observe_nullification(&mut processor, skipped_view);
 
         // When
-        let ready = processor.step(Event::Propose(proposal_input(BlockId::new(50))));
+        let ready = processor.step(Event::Propose(proposal_input(proposed_block)));
 
         // Then
         assert_eq!(ready.storage.len(), 2, "expected two storage outputs");
@@ -660,17 +676,17 @@ mod tests {
         };
 
         assert_eq!(storage_proposal, network_proposal);
-        let expected_vote = Vote::new(ValidatorId::new(5), BlockId::new(50), ViewNumber::new(5));
+        let expected_vote = Vote::new(local_leader, proposed_block, current_view);
         assert_eq!(ready.storage[1], Storage::PersistVote(expected_vote));
         assert_eq!(ready.network[1], Network::BroadcastVote(expected_vote));
 
-        let proposal = observed_proposal(&processor, ViewNumber::new(5));
+        let proposal = observed_proposal(&processor, current_view);
         assert_eq!(proposal, storage_proposal);
         assert_proposal_extends_parent(
             proposal,
-            BlockId::new(20),
-            ViewNumber::new(3),
-            &[ViewNumber::new(4)],
+            selected_parent_block,
+            selected_parent_view,
+            &[skipped_view],
         );
     }
 
@@ -680,21 +696,29 @@ mod tests {
         // Story: with parent evidence from view 2, a view 5 proposal waits
         // until nullifications for skipped views 3 and 4 are observed.
         // Given
-        let mut processor = processor_at_view(ValidatorId::new(5), ViewNumber::new(5));
-        observe_m_notarizations(&mut processor, [(BlockId::new(20), ViewNumber::new(2))]);
-        observe_nullifications(&mut processor, [ViewNumber::new(3)]);
+        let local_leader = ValidatorId::new(5);
+        let current_view = ViewNumber::new(5);
+        let selected_parent_block = BlockId::new(20);
+        let selected_parent_view = ViewNumber::new(2);
+        let first_skipped_view = ViewNumber::new(3);
+        let second_skipped_view = ViewNumber::new(4);
+        let proposed_block = BlockId::new(50);
+
+        let mut processor = processor_at_view(local_leader, current_view);
+        observe_m_notarization(&mut processor, selected_parent_block, selected_parent_view);
+        observe_nullification(&mut processor, first_skipped_view);
 
         // When
-        let ready = processor.step(Event::Propose(proposal_input(BlockId::new(50))));
+        let ready = processor.step(Event::Propose(proposal_input(proposed_block)));
 
         // Then
         assert_eq!(ready, Ready::default());
 
         // Given
-        observe_nullifications(&mut processor, [ViewNumber::new(4)]);
+        observe_nullification(&mut processor, second_skipped_view);
 
         // When
-        let ready = processor.step(Event::Propose(proposal_input(BlockId::new(50))));
+        let ready = processor.step(Event::Propose(proposal_input(proposed_block)));
 
         // Then
         assert_eq!(ready.storage.len(), 2, "expected two storage outputs");
@@ -708,9 +732,18 @@ mod tests {
         };
 
         assert_eq!(storage_proposal, network_proposal);
-        let expected_vote = Vote::new(ValidatorId::new(5), BlockId::new(50), ViewNumber::new(5));
+        let expected_vote = Vote::new(local_leader, proposed_block, current_view);
         assert_eq!(ready.storage[1], Storage::PersistVote(expected_vote));
         assert_eq!(ready.network[1], Network::BroadcastVote(expected_vote));
+
+        let proposal = observed_proposal(&processor, current_view);
+        assert_eq!(proposal, storage_proposal);
+        assert_proposal_extends_parent(
+            proposal,
+            selected_parent_block,
+            selected_parent_view,
+            &[first_skipped_view, second_skipped_view],
+        );
     }
 
     #[test]
