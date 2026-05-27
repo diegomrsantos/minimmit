@@ -542,20 +542,25 @@ mod tests {
     /// block, or skipped view nullifications differ from the simple previous
     /// view proposal shape.
     fn proposal_extending(
-        block: BlockId,
-        view: ViewNumber,
-        parent: BlockId,
+        proposal_block_id: BlockId,
+        proposal_view: ViewNumber,
+        parent_block_id: BlockId,
         parent_view: ViewNumber,
-        nullifications: impl IntoIterator<Item = Nullification>,
+        skipped_view_nullifications: impl IntoIterator<Item = Nullification>,
     ) -> Proposal {
-        let block = Block::new(block, view, parent, [TransactionId::new(block.get())])
-            .expect("proposal block is valid");
+        let proposal_block = Block::new(
+            proposal_block_id,
+            proposal_view,
+            parent_block_id,
+            [TransactionId::new(proposal_block_id.get())],
+        )
+        .expect("proposal block is valid");
 
         Proposal::new(
-            committee().leader(view),
-            block,
-            m_notarization(parent, parent_view),
-            nullifications,
+            committee().leader(proposal_view),
+            proposal_block,
+            m_notarization(parent_block_id, parent_view),
+            skipped_view_nullifications,
         )
         .expect("proposal nullification views are unique")
     }
