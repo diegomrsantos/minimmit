@@ -62,15 +62,36 @@ fn proposal_input(block_id: BlockId) -> ProposalInput {
     ProposalInput::new(block_id, [TransactionId::new(block_id.get())])
 }
 
-fn ready_proposal(ready: Ready) -> Proposal {
-    assert_eq!(ready.storage.len(), 1, "expected one storage output");
-    assert_eq!(ready.network.len(), 1, "expected one network output");
+/// Asserts leader proposal ready output contains proposal work followed by vote work.
+///
+/// Returns the proposal from the storage output so tests can assert the fields
+/// without repeating the ready output shape.
+fn assert_leader_proposal_ready(ready: Ready) -> Proposal {
+    assert_eq!(ready.storage.len(), 2, "expected two storage outputs");
+    assert_eq!(ready.network.len(), 2, "expected two network outputs");
 
-    let Storage::PersistProposal(persisted) = &ready.storage[0];
-    let Network::BroadcastProposal(broadcast) = &ready.network[0];
+    let Storage::PersistProposal(storage_proposal) = &ready.storage[0] else {
+        panic!("expected proposal storage output");
+    };
+    let Network::BroadcastProposal(network_proposal) = &ready.network[0] else {
+        panic!("expected proposal network output");
+    };
 
-    assert_eq!(persisted, broadcast);
-    persisted.clone()
+    assert_eq!(storage_proposal, network_proposal);
+    let expected_vote = Vote::new(
+        storage_proposal.proposer(),
+        storage_proposal.block().id(),
+        storage_proposal.block().view(),
+    );
+    assert_eq!(ready.storage[1], Storage::PersistVote(expected_vote));
+    assert_eq!(ready.network[1], Network::BroadcastVote(expected_vote));
+
+    storage_proposal.clone()
+}
+
+fn assert_ready_vote(ready: Ready, vote: Vote) {
+    assert_eq!(ready.storage, [Storage::PersistVote(vote)]);
+    assert_eq!(ready.network, [Network::BroadcastVote(vote)]);
 }
 
 fn assert_view_1_leader_proposal(proposal: &Proposal) {
@@ -210,12 +231,18 @@ fn noop_event_returns_no_ready_output_and_preserves_state() {
 }
 
 #[test]
-fn proposal_event_records_proposal_without_ready_output_or_view_change() {
+fn future_proposal_event_records_proposal_without_ready_output_or_view_change() {
+    // Claim: MM-VOTE-VALID-PROPOSAL (votecheck/vote1).
+    // Story: a valid future proposal is recorded as evidence, but it is not a
+    // current view vote trigger and does not advance the processor.
+    // Given
     let mut processor = processor();
     let proposal = proposal(BlockId::new(20), ViewNumber::new(2));
 
+    // When
     let ready = processor.step(Event::Proposal(proposal));
 
+    // Then
     assert_eq!(ready, Ready::default());
     assert!(ready.is_empty());
     assert_eq!(processor.current_view(), ViewNumber::new(1));
@@ -236,6 +263,240 @@ fn nullification_event_records_current_view_nullification_without_ready_output()
     assert!(ready.is_empty());
     assert_eq!(processor.current_view(), ViewNumber::new(1));
     assert_eq!(observed_nullifications(&processor), [ViewNumber::new(1)]);
+}
+
+mod current_view_vote {
+    use super::*;
+
+    #[test]
+    fn valid_current_view_proposal_emits_one_vote() {
+        // Claim: MM-VOTE-VALID-PROPOSAL (votecheck/vote1).
+        // Story: a valid current view proposal consumes the processor's vote slot.
+        // Given
+        let mut processor = processor();
+        let proposal = proposal(BlockId::new(10), ViewNumber::new(1));
+
+        // When
+        let ready = processor.step(Event::Proposal(proposal));
+
+        // Then
+        assert_ready_vote(
+            ready,
+            Vote::new(ValidatorId::new(0), BlockId::new(10), ViewNumber::new(1)),
+        );
+        assert_eq!(
+            observed_proposal_blocks(&processor, ViewNumber::new(1)),
+            [BlockId::new(10)]
+        );
+    }
+
+    #[test]
+    fn duplicate_current_view_proposal_does_not_emit_second_vote() {
+        // Claim: MM-VOTE-VALID-PROPOSAL (votecheck/vote1).
+        // Story: redelivering the same current view proposal must not create a
+        // second vote.
+        // Given
+        let mut processor = processor();
+        let proposal = proposal(BlockId::new(10), ViewNumber::new(1));
+        assert_ready_vote(
+            processor.step(Event::Proposal(proposal.clone())),
+            Vote::new(ValidatorId::new(0), BlockId::new(10), ViewNumber::new(1)),
+        );
+
+        // When
+        let ready = processor.step(Event::Proposal(proposal));
+
+        // Then
+        assert_eq!(ready, Ready::default());
+        assert!(ready.is_empty());
+        assert_eq!(
+            observed_proposal_blocks(&processor, ViewNumber::new(1)),
+            [BlockId::new(10)]
+        );
+    }
+
+    #[test]
+    fn different_current_view_proposal_after_vote_is_recorded_without_second_vote() {
+        // Claim: MM-VOTE-VALID-PROPOSAL (votecheck/vote1).
+        // Story: after voting once, a later valid proposal is observed but not voted for.
+        // Given
+        let mut processor = processor();
+        assert_ready_vote(
+            processor.step(Event::Proposal(proposal(
+                BlockId::new(10),
+                ViewNumber::new(1),
+            ))),
+            Vote::new(ValidatorId::new(0), BlockId::new(10), ViewNumber::new(1)),
+        );
+
+        // When
+        let ready = processor.step(Event::Proposal(proposal(
+            BlockId::new(11),
+            ViewNumber::new(1),
+        )));
+
+        // Then
+        assert_eq!(ready, Ready::default());
+        assert!(ready.is_empty());
+        assert_eq!(
+            observed_proposal_blocks(&processor, ViewNumber::new(1)),
+            [BlockId::new(10), BlockId::new(11)]
+        );
+    }
+
+    #[test]
+    fn local_leader_proposal_consumes_vote_slot_before_conflicting_proposal() {
+        // Claim: MM-VOTE-VALID-PROPOSAL (votecheck/vote1).
+        // Story: local proposal output includes the current view vote, so a later
+        // conflicting proposal cannot receive another vote.
+        // Given
+        let mut processor = leader_processor_for_view_1();
+        assert_leader_proposal_ready(
+            processor.step(Event::Propose(proposal_input(BlockId::new(10)))),
+        );
+
+        // When
+        let ready = processor.step(Event::Proposal(proposal(
+            BlockId::new(11),
+            ViewNumber::new(1),
+        )));
+
+        // Then
+        assert_eq!(ready, Ready::default());
+        assert!(ready.is_empty());
+        assert_eq!(
+            observed_proposal_blocks(&processor, ViewNumber::new(1)),
+            [BlockId::new(10), BlockId::new(11)]
+        );
+    }
+
+    #[test]
+    fn current_view_nullification_blocks_later_proposal_vote() {
+        // Claim: MM-VOTE-VALID-PROPOSAL (votecheck/vote1).
+        // Story: a processor that has observed nullification for its current view
+        // records a later proposal without voting for it.
+        // Given
+        let mut processor = processor();
+        assert_eq!(
+            processor.step(Event::Nullification(nullification(ViewNumber::new(1)))),
+            Ready::default()
+        );
+
+        // When
+        let ready = processor.step(Event::Proposal(proposal(
+            BlockId::new(10),
+            ViewNumber::new(1),
+        )));
+
+        // Then
+        assert_eq!(ready, Ready::default());
+        assert!(ready.is_empty());
+        assert_eq!(observed_nullifications(&processor), [ViewNumber::new(1)]);
+        assert_eq!(
+            observed_proposal_blocks(&processor, ViewNumber::new(1)),
+            [BlockId::new(10)]
+        );
+    }
+
+    #[test]
+    fn future_proposal_does_not_consume_current_view_vote_slot() {
+        // Claim: MM-VOTE-VALID-PROPOSAL (votecheck/vote1).
+        // Story: observing a future proposal is not a current view vote.
+        // Given
+        let mut processor = processor();
+        assert_eq!(
+            processor.step(Event::Proposal(proposal(
+                BlockId::new(20),
+                ViewNumber::new(2)
+            ))),
+            Ready::default()
+        );
+        assert_eq!(
+            observed_proposal_blocks(&processor, ViewNumber::new(2)),
+            [BlockId::new(20)]
+        );
+
+        // When
+        let ready = processor.step(Event::Proposal(proposal(
+            BlockId::new(10),
+            ViewNumber::new(1),
+        )));
+
+        // Then
+        assert_ready_vote(
+            ready,
+            Vote::new(ValidatorId::new(0), BlockId::new(10), ViewNumber::new(1)),
+        );
+    }
+
+    #[test]
+    fn invalid_current_view_proposal_does_not_consume_vote_slot() {
+        // Claim: MM-VOTE-VALID-PROPOSAL (votecheck/vote1).
+        // Story: invalid proposal evidence is ignored before the vote guard runs.
+        // Given
+        let mut processor = processor();
+        let invalid_proposal = proposal_with_parent_notarization_from_other_committee(
+            BlockId::new(30),
+            ViewNumber::new(1),
+        );
+        assert_eq!(
+            processor.step(Event::Proposal(invalid_proposal)),
+            Ready::default()
+        );
+        assert_eq!(observed_proposal_blocks(&processor, ViewNumber::new(1)), []);
+
+        // When
+        let ready = processor.step(Event::Proposal(proposal(
+            BlockId::new(10),
+            ViewNumber::new(1),
+        )));
+
+        // Then
+        assert_ready_vote(
+            ready,
+            Vote::new(ValidatorId::new(0), BlockId::new(10), ViewNumber::new(1)),
+        );
+        assert_eq!(
+            observed_proposal_blocks(&processor, ViewNumber::new(1)),
+            [BlockId::new(10)]
+        );
+    }
+
+    #[test]
+    fn proposal_not_signed_by_view_leader_does_not_consume_vote_slot() {
+        // Claim: MM-VOTE-VALID-PROPOSAL (votecheck/vote1).
+        // Story: a current view proposal from the wrong signer is ignored, so the
+        // next valid current view proposal can still receive the local vote.
+        // Given
+        let mut processor = processor();
+        let wrong_leader_proposal = proposal_with_proposer(
+            BlockId::new(20),
+            ViewNumber::new(1),
+            TransactionId::new(20),
+            ValidatorId::new(0),
+        );
+        assert_eq!(
+            processor.step(Event::Proposal(wrong_leader_proposal)),
+            Ready::default()
+        );
+        assert_eq!(observed_proposal_blocks(&processor, ViewNumber::new(1)), []);
+
+        // When
+        let ready = processor.step(Event::Proposal(proposal(
+            BlockId::new(10),
+            ViewNumber::new(1),
+        )));
+
+        // Then
+        assert_ready_vote(
+            ready,
+            Vote::new(ValidatorId::new(0), BlockId::new(10), ViewNumber::new(1)),
+        );
+        assert_eq!(
+            observed_proposal_blocks(&processor, ViewNumber::new(1)),
+            [BlockId::new(10)]
+        );
+    }
 }
 
 #[test]
@@ -446,24 +707,6 @@ fn artifacts_valid_for_another_committee_are_ignored() {
 }
 
 #[test]
-fn proposal_not_signed_by_view_leader_is_ignored() {
-    let mut processor = processor();
-    let wrong_leader_proposal = proposal_with_proposer(
-        BlockId::new(20),
-        ViewNumber::new(1),
-        TransactionId::new(20),
-        ValidatorId::new(0),
-    );
-
-    assert_eq!(
-        processor.step(Event::Proposal(wrong_leader_proposal)),
-        Ready::default()
-    );
-
-    assert_eq!(observed_proposal_blocks(&processor, ViewNumber::new(1)), []);
-}
-
-#[test]
 fn genesis_notarization_and_nullification_observations_are_ignored() {
     let mut processor = processor();
 
@@ -484,13 +727,19 @@ fn genesis_notarization_and_nullification_observations_are_ignored() {
 }
 
 #[test]
-fn leader_proposal_trigger_records_and_returns_storage_then_network_work() {
+fn leader_proposal_trigger_records_and_returns_proposal_then_vote_work() {
+    // Claim: MM-LEADER-PROPOSE (sendblock) and MM-VOTE-VALID-PROPOSAL (vote1).
+    // Story: the view leader starts one proposal and emits the matching vote in
+    // the same ready output.
+    // Given
     let mut processor = leader_processor_for_view_1();
 
+    // When
     let ready = processor.step(Event::Propose(proposal_input(BlockId::new(10))));
 
-    let persisted = ready_proposal(ready);
-    assert_view_1_leader_proposal(&persisted);
+    // Then
+    let proposal = assert_leader_proposal_ready(ready);
+    assert_view_1_leader_proposal(&proposal);
     assert_eq!(
         observed_proposal_blocks(&processor, ViewNumber::new(1)),
         [BlockId::new(10)]
@@ -500,40 +749,57 @@ fn leader_proposal_trigger_records_and_returns_storage_then_network_work() {
             .observed_proposals(ViewNumber::new(1))
             .next()
             .expect("leader proposal is recorded immediately"),
-        &persisted
+        &proposal
     );
 }
 
 #[test]
 fn non_leader_proposal_trigger_returns_no_ready_output() {
+    // Claim: MM-LEADER-PROPOSE (sendblock).
+    // Story: a validator that is not the view leader cannot start the current
+    // view proposal.
+    // Given
     let mut processor = processor();
 
+    // When
     let ready = processor.step(Event::Propose(proposal_input(BlockId::new(10))));
 
+    // Then
     assert_eq!(ready, Ready::default());
     assert!(ready.is_empty());
     assert_eq!(observed_proposal_blocks(&processor, ViewNumber::new(1)), []);
 }
 
-// State-fact transition matrix: local leader current-view proposal slot.
-//
-// Fact: the local leader's current-view proposal slot is consumed.
-// Claim: MM-LEADER-PROPOSE / Algorithm 1 sendblock.
-// Establishing events: successful local Event::Propose; observed valid local
-// current-view Event::Proposal.
-// Must not establish: invalid local current-view proposal, or valid local
-// future-view proposal.
-// Depends: a later local Event::Propose for the same current view must not emit
-// a second proposal.
-// Reset: view advancement will reset the slot; current-view advancement is a
-// later evidence gap.
-// Evidence: the proposal-slot tests below cover the current cross-event paths.
+#[test]
+fn current_view_nullification_prevents_later_leader_proposal() {
+    // Claim: MM-LEADER-PROPOSE (sendblock).
+    // Story: once the current view is nullified, the leader does not start a
+    // proposal for that view.
+    // Given
+    let mut processor = leader_processor_for_view_1();
+    assert_eq!(
+        processor.step(Event::Nullification(nullification(ViewNumber::new(1)))),
+        Ready::default()
+    );
+
+    // When
+    let ready = processor.step(Event::Propose(proposal_input(BlockId::new(10))));
+
+    // Then
+    assert_eq!(ready, Ready::default());
+    assert!(ready.is_empty());
+    assert_eq!(observed_nullifications(&processor), [ViewNumber::new(1)]);
+    assert_eq!(observed_proposal_blocks(&processor, ViewNumber::new(1)), []);
+}
+
 #[test]
 fn leader_that_has_already_proposed_does_not_start_second_proposal() {
-    let mut processor = leader_processor_for_view_1();
-
+    // Claim: MM-LEADER-PROPOSE (sendblock).
+    // Story: a successful local proposal consumes the leader's proposal slot for
+    // the current view.
     // Given
-    ready_proposal(processor.step(Event::Propose(proposal_input(BlockId::new(10)))));
+    let mut processor = leader_processor_for_view_1();
+    assert_leader_proposal_ready(processor.step(Event::Propose(proposal_input(BlockId::new(10)))));
 
     // When
     let ready = processor.step(Event::Propose(proposal_input(BlockId::new(11))));
@@ -550,13 +816,16 @@ fn leader_that_has_already_proposed_does_not_start_second_proposal() {
 
 #[test]
 fn observed_local_current_view_proposal_consumes_proposal_slot() {
+    // Claim: MM-LEADER-PROPOSE (sendblock).
+    // Story: observing the local leader's valid current view proposal consumes
+    // the same proposal slot as starting it locally.
+    // Given
     let mut processor = leader_processor_for_view_1();
     let local_proposal = proposal(BlockId::new(10), ViewNumber::new(1));
 
-    // Given
-    assert_eq!(
+    assert_ready_vote(
         processor.step(Event::Proposal(local_proposal)),
-        Ready::default()
+        Vote::new(ValidatorId::new(1), BlockId::new(10), ViewNumber::new(1)),
     );
 
     // When
@@ -574,13 +843,16 @@ fn observed_local_current_view_proposal_consumes_proposal_slot() {
 
 #[test]
 fn invalid_observed_local_current_view_proposal_does_not_consume_proposal_slot() {
+    // Claim: MM-LEADER-PROPOSE (sendblock).
+    // Story: invalid evidence from the local leader is ignored and does not use
+    // the current view proposal slot.
+    // Given
     let mut processor = leader_processor_for_view_1();
     let invalid_local_proposal = proposal_with_parent_notarization_from_other_committee(
         BlockId::new(10),
         ViewNumber::new(1),
     );
 
-    // Given
     assert_eq!(
         processor.step(Event::Proposal(invalid_local_proposal)),
         Ready::default()
@@ -588,7 +860,9 @@ fn invalid_observed_local_current_view_proposal_does_not_consume_proposal_slot()
     assert_eq!(observed_proposal_blocks(&processor, ViewNumber::new(1)), []);
 
     // When
-    let proposal = ready_proposal(processor.step(Event::Propose(proposal_input(BlockId::new(10)))));
+    let proposal = assert_leader_proposal_ready(
+        processor.step(Event::Propose(proposal_input(BlockId::new(10)))),
+    );
 
     // Then
     assert_eq!(processor.current_view(), ViewNumber::new(1));
@@ -601,10 +875,13 @@ fn invalid_observed_local_current_view_proposal_does_not_consume_proposal_slot()
 
 #[test]
 fn observed_local_future_view_proposal_does_not_consume_current_view_proposal_slot() {
+    // Claim: MM-LEADER-PROPOSE (sendblock).
+    // Story: a valid local proposal for a future view is observed without using
+    // the current view proposal slot.
+    // Given
     let mut processor = leader_processor_for_view_1();
     let future_local_proposal = proposal(BlockId::new(70), ViewNumber::new(7));
 
-    // Given
     assert_eq!(
         processor.step(Event::Proposal(future_local_proposal)),
         Ready::default()
@@ -615,7 +892,9 @@ fn observed_local_future_view_proposal_does_not_consume_current_view_proposal_sl
     );
 
     // When
-    let proposal = ready_proposal(processor.step(Event::Propose(proposal_input(BlockId::new(10)))));
+    let proposal = assert_leader_proposal_ready(
+        processor.step(Event::Propose(proposal_input(BlockId::new(10)))),
+    );
 
     // Then
     assert_eq!(processor.current_view(), ViewNumber::new(1));
@@ -632,13 +911,16 @@ fn observed_local_future_view_proposal_does_not_consume_current_view_proposal_sl
 
 #[test]
 fn invalid_leader_proposal_input_does_not_record_proposed_state() {
+    // Claim: MM-LEADER-PROPOSE (sendblock).
+    // Story: invalid local proposal input does not use the current view proposal
+    // slot, so a later valid input can still start the proposal.
+    // Given
     let mut processor = leader_processor_for_view_1();
     let duplicate_transactions = ProposalInput::new(
         BlockId::new(10),
         [TransactionId::new(1), TransactionId::new(1)],
     );
 
-    // Given
     assert_eq!(
         processor.step(Event::Propose(duplicate_transactions)),
         Ready::default()
@@ -646,7 +928,7 @@ fn invalid_leader_proposal_input_does_not_record_proposed_state() {
     assert_eq!(observed_proposal_blocks(&processor, ViewNumber::new(1)), []);
 
     // When
-    ready_proposal(processor.step(Event::Propose(proposal_input(BlockId::new(10)))));
+    assert_leader_proposal_ready(processor.step(Event::Propose(proposal_input(BlockId::new(10)))));
 
     // Then
     assert_eq!(

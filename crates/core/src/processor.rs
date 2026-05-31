@@ -22,6 +22,7 @@ pub struct Processor {
     observed_m_notarizations: BTreeMap<ViewNumber, BTreeMap<BlockId, MNotarization>>,
     observed_nullifications: BTreeMap<ViewNumber, Nullification>,
     proposed_current_view: bool,
+    voted_current_view: Option<Vote>,
 }
 
 impl Processor {
@@ -49,6 +50,7 @@ impl Processor {
             observed_m_notarizations: BTreeMap::new(),
             observed_nullifications: BTreeMap::new(),
             proposed_current_view: false,
+            voted_current_view: None,
         })
     }
 
@@ -93,20 +95,16 @@ impl Processor {
     /// Applies one deterministic protocol event and returns ready output.
     ///
     /// Artifact events record local protocol evidence that is valid for this
-    /// processor's committee without implying any downstream vote, forwarding,
-    /// view advancement, or persistence behavior. A local proposal trigger
-    /// records the proposal immediately and emits storage plus network work;
-    /// when both outputs refer to that proposal, the shell must persist before
-    /// broadcasting it.
+    /// processor's committee. A current-view proposal also emits vote work when
+    /// the vote guard allows it. A local proposal trigger records the proposal
+    /// immediately and emits storage plus network work; when both outputs refer
+    /// to that proposal, the shell must persist before broadcasting it.
     #[must_use]
     pub fn step(&mut self, event: Event) -> Ready {
         match event {
             Event::Noop => Ready::default(),
             Event::Propose(input) => self.propose(input),
-            Event::Proposal(proposal) => {
-                self.record_proposal(proposal);
-                Ready::default()
-            }
+            Event::Proposal(proposal) => self.observe_proposal(proposal),
             Event::Nullification(nullification) => {
                 self.record_nullification(nullification);
                 Ready::default()
@@ -118,9 +116,20 @@ impl Processor {
         }
     }
 
+    /// Records an observed proposal and votes when the current-view guard allows it.
+    fn observe_proposal(&mut self, proposal: Proposal) -> Ready {
+        if !self.record_proposal(proposal.clone()) {
+            return Ready::default();
+        }
+
+        self.vote_for_current_view_proposal(&proposal)
+    }
+
     /// Starts the local leader proposal transition when the current view allows it.
     fn propose(&mut self, input: ProposalInput) -> Ready {
         if self.proposed_current_view
+            || self.voted_current_view.is_some()
+            || self.current_view_is_nullified()
             || self.committee.leader(self.current_view) != self.local_validator
         {
             return Ready::default();
@@ -132,10 +141,22 @@ impl Processor {
 
         self.proposed_current_view = true;
         self.record_proposal(proposal.clone());
+        let vote = Vote::new(
+            self.local_validator,
+            proposal.block().id(),
+            self.current_view,
+        );
+        self.voted_current_view = Some(vote);
 
         Ready {
-            storage: vec![Storage::PersistProposal(proposal.clone())],
-            network: vec![Network::BroadcastProposal(proposal)],
+            storage: vec![
+                Storage::PersistProposal(proposal.clone()),
+                Storage::PersistVote(vote),
+            ],
+            network: vec![
+                Network::BroadcastProposal(proposal),
+                Network::BroadcastVote(vote),
+            ],
         }
     }
 
@@ -205,9 +226,13 @@ impl Processor {
     /// choosing a later replacement policy. A valid local proposal for the
     /// current view consumes the local leader's one-proposal slot, even when it
     /// arrives through the artifact path.
-    fn record_proposal(&mut self, proposal: Proposal) {
+    ///
+    /// Returns whether the proposal was valid for this processor. Duplicate
+    /// observations still return true because a valid duplicate can trigger a
+    /// later transition without replacing the first stored proposal.
+    fn record_proposal(&mut self, proposal: Proposal) -> bool {
         if !self.valid_proposal_observation(&proposal) {
-            return;
+            return false;
         }
 
         let consumes_local_proposal_slot = proposal.proposer() == self.local_validator
@@ -224,6 +249,36 @@ impl Processor {
         if consumes_local_proposal_slot {
             self.proposed_current_view = true;
         }
+
+        true
+    }
+
+    /// Emits a local vote for an observed current-view proposal when allowed.
+    fn vote_for_current_view_proposal(&mut self, proposal: &Proposal) -> Ready {
+        if proposal.block().view() != self.current_view
+            || self.voted_current_view.is_some()
+            || self.current_view_is_nullified()
+        {
+            return Ready::default();
+        }
+
+        let vote = Vote::new(
+            self.local_validator,
+            proposal.block().id(),
+            self.current_view,
+        );
+        self.voted_current_view = Some(vote);
+
+        Ready {
+            storage: vec![Storage::PersistVote(vote)],
+            network: vec![Network::BroadcastVote(vote)],
+        }
+    }
+
+    /// Returns whether this processor has observed nullification of its current view.
+    fn current_view_is_nullified(&self) -> bool {
+        self.observed_nullifications
+            .contains_key(&self.current_view)
     }
 
     /// Records a non-genesis M-notarization valid for this processor's committee.
@@ -318,8 +373,9 @@ impl Processor {
 ///
 /// Events include local triggers and observed protocol artifacts. Artifact
 /// events are admitted only when their evidence and proposal predicate validate
-/// against the processor's committee. Recording artifact events does not by
-/// itself imply voting, proposing, forwarding, advancement, or persistence.
+/// against the processor's committee. A current-view proposal can emit vote
+/// work; other downstream behavior such as forwarding and view advancement is
+/// implemented by separate transition paths.
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Event {
@@ -378,8 +434,8 @@ impl ProposalInput {
 /// `Ready` describes work an outer shell should perform. Storage outputs are
 /// listed separately from network outputs so a shell can make protocol
 /// artifacts durable before releasing dependent messages. When a storage output
-/// and a network output refer to the same proposal, the shell persists it first
-/// and only then broadcasts it.
+/// and a network output refer to the same protocol artifact, the shell persists
+/// it first and only then broadcasts it.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Ready {
     /// Storage work the shell should complete.
@@ -393,6 +449,8 @@ pub struct Ready {
 pub enum Storage {
     /// Persist a proposal before releasing dependent network output.
     PersistProposal(Proposal),
+    /// Persist a vote before releasing dependent network output.
+    PersistVote(Vote),
 }
 
 /// Network work produced by a [`Processor`] transition.
@@ -400,6 +458,8 @@ pub enum Storage {
 pub enum Network {
     /// Broadcast a proposal after its matching storage output is durable.
     BroadcastProposal(Proposal),
+    /// Broadcast a vote after its matching storage output is durable.
+    BroadcastVote(Vote),
 }
 
 impl Ready {
@@ -436,8 +496,8 @@ impl std::error::Error for ProcessorError {}
 mod tests {
     use super::{Event, Network, Processor, ProposalInput, Ready, Storage};
     use crate::{
-        BlockId, Committee, MNotarization, Nullification, Nullify, TransactionId, ValidatorId,
-        ViewNumber, Vote,
+        Block, BlockId, Committee, MNotarization, Nullification, Nullify, Proposal, TransactionId,
+        ValidatorId, ViewNumber, Vote,
     };
 
     fn committee() -> Committee {
@@ -476,47 +536,74 @@ mod tests {
         .expect("nullifies form a nullification")
     }
 
+    /// Builds a proposal signed by the view leader with caller supplied parent evidence.
+    ///
+    /// Use this helper when a test needs a proposal whose parent view, parent
+    /// block, or skipped view nullifications differ from the simple previous
+    /// view proposal shape.
+    fn proposal_extending(
+        proposal_block_id: BlockId,
+        proposal_view: ViewNumber,
+        parent_block_id: BlockId,
+        parent_view: ViewNumber,
+        skipped_view_nullifications: impl IntoIterator<Item = Nullification>,
+    ) -> Proposal {
+        let proposal_block = Block::new(
+            proposal_block_id,
+            proposal_view,
+            parent_block_id,
+            [TransactionId::new(proposal_block_id.get())],
+        )
+        .expect("proposal block is valid");
+
+        Proposal::new(
+            committee().leader(proposal_view),
+            proposal_block,
+            m_notarization(parent_block_id, parent_view),
+            skipped_view_nullifications,
+        )
+        .expect("proposal nullification views are unique")
+    }
+
     fn proposal_input(block: BlockId) -> ProposalInput {
         ProposalInput::new(block, [TransactionId::new(block.get())])
     }
 
-    fn ready_proposal(ready: Ready) -> crate::Proposal {
-        assert_eq!(ready.storage.len(), 1, "expected one storage output");
-        assert_eq!(ready.network.len(), 1, "expected one network output");
-
-        let Storage::PersistProposal(persisted) = &ready.storage[0];
-        let Network::BroadcastProposal(broadcast) = &ready.network[0];
-
-        assert_eq!(persisted, broadcast);
-        persisted.clone()
-    }
-
-    fn observe_m_notarizations<const N: usize>(
+    /// Observes one M-notarization artifact and asserts it emits no ready work.
+    ///
+    /// Keep the notarized block and view explicit at each call site so proposal
+    /// parent selection scenarios show which evidence is present.
+    fn observe_m_notarization(
         processor: &mut Processor,
-        notarizations: [(BlockId, ViewNumber); N],
+        notarized_block: BlockId,
+        notarized_view: ViewNumber,
     ) {
-        for (block, view) in notarizations {
-            assert_eq!(
-                processor.step(Event::MNotarization(m_notarization(block, view))),
-                Ready::default(),
-                "observing an M-notarization should not emit ready work"
-            );
-        }
+        assert_eq!(
+            processor.step(Event::MNotarization(m_notarization(
+                notarized_block,
+                notarized_view
+            ))),
+            Ready::default(),
+            "observing an M-notarization should not emit ready work"
+        );
     }
 
-    fn observe_nullifications<const N: usize>(
-        processor: &mut Processor,
-        nullifications: [ViewNumber; N],
-    ) {
-        for view in nullifications {
-            assert_eq!(
-                processor.step(Event::Nullification(nullification(view))),
-                Ready::default(),
-                "observing a nullification should not emit ready work"
-            );
-        }
+    /// Observes one nullification artifact and asserts it emits no ready work.
+    ///
+    /// Keep the nullified view explicit at each call site so skipped view
+    /// evidence stays visible in proposal scenarios.
+    fn observe_nullification(processor: &mut Processor, nullified_view: ViewNumber) {
+        assert_eq!(
+            processor.step(Event::Nullification(nullification(nullified_view))),
+            Ready::default(),
+            "observing a nullification should not emit ready work"
+        );
     }
 
+    /// Returns the observed proposal for a scenario that expects one in `view`.
+    ///
+    /// Keep the view explicit at each call site so tests show which proposal was
+    /// recorded before asserting its parent and skipped view evidence.
     fn observed_proposal(processor: &Processor, view: ViewNumber) -> &crate::Proposal {
         processor
             .observed_proposals(view)
@@ -526,78 +613,210 @@ mod tests {
 
     fn assert_proposal_extends_parent(
         proposal: &crate::Proposal,
-        parent: BlockId,
-        parent_view: ViewNumber,
-        skipped_views: &[ViewNumber],
+        expected_parent_block: BlockId,
+        expected_parent_view: ViewNumber,
+        expected_skipped_views: &[ViewNumber],
     ) {
-        assert_eq!(proposal.block().parent(), parent);
+        assert_eq!(
+            proposal.block().parent(),
+            expected_parent_block,
+            "proposal block should point at the selected parent"
+        );
         assert_eq!(
             (
                 proposal.parent_notarization().block(),
                 proposal.parent_notarization().view(),
             ),
-            (parent, parent_view)
+            (expected_parent_block, expected_parent_view),
+            "proposal should carry the selected parent M-notarization"
         );
         assert_eq!(
             proposal
                 .nullifications()
                 .map(Nullification::view)
                 .collect::<Vec<_>>(),
-            skipped_views
+            expected_skipped_views,
+            "proposal should carry nullifications for skipped views"
         );
     }
 
     #[test]
     fn leader_proposal_uses_selected_non_genesis_parent_and_skipped_nullifications() {
+        // Claim: MM-LEADER-PROPOSE (sendblock) and MM-PARENT-SELECTION.
+        // Story: in view 5, the leader selects block 20 from view 3 as parent,
+        // carries the view 4 nullification, records the proposal, and emits
+        // proposal work followed by vote work.
         // Given
-        let mut processor = processor_at_view(ValidatorId::new(5), ViewNumber::new(5));
+        let local_leader = ValidatorId::new(5);
+        let current_view = ViewNumber::new(5);
+        let selected_parent_block = BlockId::new(20);
+        let selected_parent_view = ViewNumber::new(3);
+        let larger_block_in_selected_parent_view = BlockId::new(30);
+        let older_parent_candidate_block = BlockId::new(10);
+        let older_parent_candidate_view = ViewNumber::new(2);
+        let skipped_view = ViewNumber::new(4);
+        let proposed_block = BlockId::new(50);
+
+        let mut processor = processor_at_view(local_leader, current_view);
         // Current-view advancement is implemented later; seed the private view
         // so this production branch has evidence before advancement reaches it.
-        observe_m_notarizations(
+        observe_m_notarization(
             &mut processor,
-            [
-                (BlockId::new(30), ViewNumber::new(3)),
-                (BlockId::new(20), ViewNumber::new(3)),
-                (BlockId::new(10), ViewNumber::new(2)),
-            ],
+            larger_block_in_selected_parent_view,
+            selected_parent_view,
         );
-        observe_nullifications(&mut processor, [ViewNumber::new(4)]);
+        observe_m_notarization(&mut processor, selected_parent_block, selected_parent_view);
+        observe_m_notarization(
+            &mut processor,
+            older_parent_candidate_block,
+            older_parent_candidate_view,
+        );
+        observe_nullification(&mut processor, skipped_view);
 
         // When
-        let persisted =
-            ready_proposal(processor.step(Event::Propose(proposal_input(BlockId::new(50)))));
+        let ready = processor.step(Event::Propose(proposal_input(proposed_block)));
 
         // Then
-        let proposal = observed_proposal(&processor, ViewNumber::new(5));
-        assert_eq!(proposal, &persisted);
+        assert_eq!(ready.storage.len(), 2, "expected two storage outputs");
+        assert_eq!(ready.network.len(), 2, "expected two network outputs");
+
+        let Storage::PersistProposal(storage_proposal) = &ready.storage[0] else {
+            panic!("expected proposal storage output");
+        };
+        let Network::BroadcastProposal(network_proposal) = &ready.network[0] else {
+            panic!("expected proposal network output");
+        };
+
+        assert_eq!(storage_proposal, network_proposal);
+        let expected_vote = Vote::new(local_leader, proposed_block, current_view);
+        assert_eq!(ready.storage[1], Storage::PersistVote(expected_vote));
+        assert_eq!(ready.network[1], Network::BroadcastVote(expected_vote));
+
+        let proposal = observed_proposal(&processor, current_view);
+        assert_eq!(proposal, storage_proposal);
         assert_proposal_extends_parent(
             proposal,
-            BlockId::new(20),
-            ViewNumber::new(3),
-            &[ViewNumber::new(4)],
+            selected_parent_block,
+            selected_parent_view,
+            &[skipped_view],
         );
     }
 
     #[test]
     fn leader_proposal_waits_for_all_skipped_view_nullifications() {
+        // Claim: MM-LEADER-PROPOSE (sendblock).
+        // Story: with parent evidence from view 2, a view 5 proposal waits
+        // until nullifications for skipped views 3 and 4 are observed.
         // Given
-        let mut processor = processor_at_view(ValidatorId::new(5), ViewNumber::new(5));
-        observe_m_notarizations(&mut processor, [(BlockId::new(20), ViewNumber::new(2))]);
-        observe_nullifications(&mut processor, [ViewNumber::new(3)]);
+        let local_leader = ValidatorId::new(5);
+        let current_view = ViewNumber::new(5);
+        let selected_parent_block = BlockId::new(20);
+        let selected_parent_view = ViewNumber::new(2);
+        let first_skipped_view = ViewNumber::new(3);
+        let second_skipped_view = ViewNumber::new(4);
+        let proposed_block = BlockId::new(50);
+
+        let mut processor = processor_at_view(local_leader, current_view);
+        observe_m_notarization(&mut processor, selected_parent_block, selected_parent_view);
+        observe_nullification(&mut processor, first_skipped_view);
 
         // When
-        let ready = processor.step(Event::Propose(proposal_input(BlockId::new(50))));
+        let ready = processor.step(Event::Propose(proposal_input(proposed_block)));
 
         // Then
         assert_eq!(ready, Ready::default());
 
         // Given
-        observe_nullifications(&mut processor, [ViewNumber::new(4)]);
+        observe_nullification(&mut processor, second_skipped_view);
 
         // When
-        let ready = processor.step(Event::Propose(proposal_input(BlockId::new(50))));
+        let ready = processor.step(Event::Propose(proposal_input(proposed_block)));
 
         // Then
-        ready_proposal(ready);
+        assert_eq!(ready.storage.len(), 2, "expected two storage outputs");
+        assert_eq!(ready.network.len(), 2, "expected two network outputs");
+
+        let Storage::PersistProposal(storage_proposal) = &ready.storage[0] else {
+            panic!("expected proposal storage output");
+        };
+        let Network::BroadcastProposal(network_proposal) = &ready.network[0] else {
+            panic!("expected proposal network output");
+        };
+
+        assert_eq!(storage_proposal, network_proposal);
+        let expected_vote = Vote::new(local_leader, proposed_block, current_view);
+        assert_eq!(ready.storage[1], Storage::PersistVote(expected_vote));
+        assert_eq!(ready.network[1], Network::BroadcastVote(expected_vote));
+
+        let proposal = observed_proposal(&processor, current_view);
+        assert_eq!(proposal, storage_proposal);
+        assert_proposal_extends_parent(
+            proposal,
+            selected_parent_block,
+            selected_parent_view,
+            &[first_skipped_view, second_skipped_view],
+        );
+    }
+
+    #[test]
+    fn stale_valid_proposal_does_not_emit_vote() {
+        // Claim: MM-VOTE-VALID-PROPOSAL (votecheck/vote1).
+        // Story: a valid stale proposal is observed, but it is not a current
+        // view proposal and cannot receive the local vote.
+        // Given
+        let mut processor = processor_at_view(ValidatorId::new(5), ViewNumber::new(5));
+        // Current-view advancement is implemented later; seed the private view
+        // so stale proposal handling has executable evidence before then.
+        let stale_proposal = proposal_extending(
+            BlockId::new(40),
+            ViewNumber::new(4),
+            BlockId::new(30),
+            ViewNumber::new(3),
+            [],
+        );
+
+        // When
+        let ready = processor.step(Event::Proposal(stale_proposal));
+
+        // Then
+        assert_eq!(ready, Ready::default());
+        assert_eq!(
+            processor
+                .observed_proposals(ViewNumber::new(4))
+                .map(|proposal| proposal.block().id())
+                .collect::<Vec<_>>(),
+            [BlockId::new(40)]
+        );
+    }
+
+    #[test]
+    fn current_view_proposal_missing_skipped_nullification_does_not_emit_vote() {
+        // Claim: MM-VOTE-VALID-PROPOSAL (votecheck/vote1).
+        // Story: a current view proposal with incomplete skipped view evidence
+        // is rejected before the vote guard can consume the local vote.
+        // Given
+        let mut processor = processor_at_view(ValidatorId::new(5), ViewNumber::new(5));
+        // Current-view advancement is implemented later; seed the private view
+        // so current-view validation has evidence before advancement reaches it.
+        let invalid_proposal = proposal_extending(
+            BlockId::new(50),
+            ViewNumber::new(5),
+            BlockId::new(20),
+            ViewNumber::new(2),
+            [nullification(ViewNumber::new(3))],
+        );
+
+        // When
+        let ready = processor.step(Event::Proposal(invalid_proposal));
+
+        // Then
+        assert_eq!(ready, Ready::default());
+        assert_eq!(
+            processor
+                .observed_proposals(ViewNumber::new(5))
+                .map(|proposal| proposal.block().id())
+                .collect::<Vec<_>>(),
+            []
+        );
     }
 }
