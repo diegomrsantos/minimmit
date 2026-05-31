@@ -569,6 +569,10 @@ mod tests {
         ProposalInput::new(block, [TransactionId::new(block.get())])
     }
 
+    /// Observes one M-notarization artifact and asserts it emits no ready work.
+    ///
+    /// Keep the notarized block and view explicit at each call site so proposal
+    /// parent selection scenarios show which evidence is present.
     fn observe_m_notarization(
         processor: &mut Processor,
         notarized_block: BlockId,
@@ -584,6 +588,10 @@ mod tests {
         );
     }
 
+    /// Observes one nullification artifact and asserts it emits no ready work.
+    ///
+    /// Keep the nullified view explicit at each call site so skipped view
+    /// evidence stays visible in proposal scenarios.
     fn observe_nullification(processor: &mut Processor, nullified_view: ViewNumber) {
         assert_eq!(
             processor.step(Event::Nullification(nullification(nullified_view))),
