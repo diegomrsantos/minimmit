@@ -600,6 +600,10 @@ mod tests {
         );
     }
 
+    /// Returns the observed proposal for a scenario that expects one in `view`.
+    ///
+    /// Keep the view explicit at each call site so tests show which proposal was
+    /// recorded before asserting its parent and skipped view evidence.
     fn observed_proposal(processor: &Processor, view: ViewNumber) -> &crate::Proposal {
         processor
             .observed_proposals(view)
